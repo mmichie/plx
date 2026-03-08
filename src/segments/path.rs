@@ -45,11 +45,13 @@ pub fn render(home: &str, pwd: &str) -> String {
             fg(31), bg(237), ARROW
         );
 
+        let last = parts.len() - 1;
         for (i, part) in parts.iter().enumerate().skip(1) {
             if i > 1 {
-                let _ = write!(out, " {}{THIN}", fg(245));
+                let _ = write!(out, " {}{THIN}", fg(244));
             }
-            let _ = write!(out, " {}{part}", fg(254));
+            let color = if i == last { 254 } else { 250 };
+            let _ = write!(out, " {}{part}", fg(color));
         }
         let _ = write!(out, " ");
     }
