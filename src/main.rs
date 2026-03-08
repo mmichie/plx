@@ -9,26 +9,21 @@ const BRANCH_ICON: &str = "\u{E0A0}";
 
 // ANSI color helpers
 fn fg(color: u8) -> String {
-    format!("\x1b[38;5;{}m", color)
+    format!("\x1b[38;5;{color}m")
 }
 
 fn bg(color: u8) -> String {
-    format!("\x1b[48;5;{}m", color)
+    format!("\x1b[48;5;{color}m")
 }
 
 const RST: &str = "\x1b[0m";
 
-fn render_path() {
-    let home = env::var("HOME").unwrap_or_default();
-    let pwd = env::current_dir()
-        .map(|p| p.to_string_lossy().to_string())
-        .unwrap_or_default();
-
+fn render_path(home: &str, pwd: &str) -> String {
     // Replace HOME with ~
-    let path = if pwd.starts_with(&home) {
+    let path = if !home.is_empty() && pwd.starts_with(home) {
         format!("~{}", &pwd[home.len()..])
     } else {
-        pwd
+        pwd.to_string()
     };
 
     // Split into components
@@ -72,26 +67,23 @@ fn render_path() {
         );
 
         // Remaining components on bg:237
-        for i in 1..n {
+        for (i, part) in parts.iter().enumerate().skip(1) {
             if i > 1 {
-                let _ = write!(out, " {}{}", fg(245), THIN);
+                let _ = write!(out, " {}{THIN}", fg(245));
             }
-            let _ = write!(out, " {}{}", fg(254), parts[i]);
+            let _ = write!(out, " {}{part}", fg(254));
         }
         let _ = write!(out, " ");
     }
 
-    print!("{}", out);
+    out
 }
 
-fn render_git() {
-    let mut repo = match Repository::discover(".") {
-        Ok(r) => r,
-        Err(_) => {
-            // Not in a git repo — just output the closing arrow (dir_end)
-            print!("{}{}{}{}", fg(237), bg(236), ARROW, RST);
-            return;
-        }
+#[allow(clippy::too_many_lines)]
+fn render_git(discover_from: &std::path::Path) -> String {
+    let Ok(mut repo) = Repository::discover(discover_from) else {
+        // Not in a git repo — just output the closing arrow (dir_end)
+        return format!("{}{}{ARROW}{RST}", fg(237), bg(236));
     };
 
     // Get branch name
@@ -99,12 +91,14 @@ fn render_git() {
         repo.head()
             .ok()
             .and_then(|h| h.peel_to_commit().ok())
-            .map(|c| c.id().to_string()[..7].to_string())
-            .unwrap_or_else(|| "HEAD".to_string())
+            .map_or_else(
+                || "HEAD".to_string(),
+                |c| c.id().to_string()[..7].to_string(),
+            )
     } else {
         repo.head()
             .ok()
-            .and_then(|h| h.shorthand().map(|s| s.to_string()))
+            .and_then(|h| h.shorthand().map(str::to_string))
             .unwrap_or_else(|| "HEAD".to_string())
     };
 
@@ -123,15 +117,20 @@ fn render_git() {
             let s = entry.status();
             if s.is_conflicted() {
                 conflicted += 1;
-            } else {
-                if s.is_index_new()
-                    || s.is_index_modified()
-                    || s.is_index_deleted()
-                    || s.is_index_renamed()
-                    || s.is_index_typechange()
-                {
-                    staged += 1;
+            } else if s.is_index_new()
+                || s.is_index_modified()
+                || s.is_index_deleted()
+                || s.is_index_renamed()
+                || s.is_index_typechange()
+            {
+                staged += 1;
+                if s.is_wt_modified() || s.is_wt_deleted() || s.is_wt_typechange() {
+                    modified += 1;
                 }
+                if s.is_wt_new() {
+                    untracked += 1;
+                }
+            } else {
                 if s.is_wt_modified() || s.is_wt_deleted() || s.is_wt_typechange() {
                     modified += 1;
                 }
@@ -175,9 +174,9 @@ fn render_git() {
         // Pink branch: arrow from path(237) to 161
         let _ = write!(
             out,
-            "{}{}{} {}{} {} ",
-            fg(237), bg(161), ARROW,
-            fg(15), BRANCH_ICON, branch
+            "{}{}{ARROW} {}{BRANCH_ICON} {branch} ",
+            fg(237), bg(161),
+            fg(15),
         );
         let mut prev: u8 = 161;
 
@@ -185,9 +184,9 @@ fn render_git() {
         if let Some(st) = state {
             let _ = write!(
                 out,
-                "{}{}{} {}{} ",
-                fg(prev), bg(220), ARROW,
-                fg(0), st
+                "{}{}{ARROW} {}{st} ",
+                fg(prev), bg(220),
+                fg(0),
             );
             prev = 220;
         }
@@ -195,117 +194,105 @@ fn render_git() {
         // Status segments: (bg_color, text)
         let mut segs: Vec<(u8, String)> = Vec::new();
         if ahead > 0 {
-            segs.push((240, format!("{}⬆", ahead)));
+            segs.push((240, format!("{ahead}⬆")));
         }
         if behind > 0 {
-            segs.push((240, format!("{}⬇", behind)));
+            segs.push((240, format!("{behind}⬇")));
         }
         if staged > 0 {
-            segs.push((22, format!("{}✔", staged)));
+            segs.push((22, format!("{staged}✔")));
         }
         if modified > 0 {
-            segs.push((130, format!("{}✎", modified)));
+            segs.push((130, format!("{modified}✎")));
         }
         if untracked > 0 {
-            segs.push((52, format!("{}+", untracked)));
+            segs.push((52, format!("{untracked}+")));
         }
         if conflicted > 0 {
-            segs.push((9, format!("{}✼", conflicted)));
+            segs.push((9, format!("{conflicted}✼")));
         }
         if stashed > 0 {
-            segs.push((20, format!("{}⚑", stashed)));
+            segs.push((20, format!("{stashed}⚑")));
         }
 
         for (seg_bg, seg_text) in &segs {
             let _ = write!(
                 out,
-                "{}{}{} {}{} ",
-                fg(prev), bg(*seg_bg), ARROW,
-                fg(15), seg_text
+                "{}{}{ARROW} {}{seg_text} ",
+                fg(prev), bg(*seg_bg),
+                fg(15),
             );
             prev = *seg_bg;
         }
 
         // Final arrow to terminal bg (236)
-        let _ = write!(out, "{}{}{}{}", fg(prev), bg(236), ARROW, RST);
+        let _ = write!(out, "{}{}{ARROW}{RST}", fg(prev), bg(236));
     } else {
         // Green branch (clean): arrow from path(237) to 148
         let _ = write!(
             out,
-            "{}{}{} {}{} {} {}{}{}{}",
-            fg(237), bg(148), ARROW,
-            fg(0), BRANCH_ICON, branch,
-            fg(148), bg(236), ARROW, RST
+            "{}{}{ARROW} {}{BRANCH_ICON} {branch} {}{}{ARROW}{RST}",
+            fg(237), bg(148),
+            fg(0),
+            fg(148), bg(236),
         );
     }
 
-    print!("{}", out);
+    out
 }
 
 fn get_ahead_behind(repo: &Repository) -> (u32, u32) {
-    let head = match repo.head() {
-        Ok(h) => h,
-        Err(_) => return (0, 0),
+    let Ok(head) = repo.head() else {
+        return (0, 0);
     };
 
-    let local_oid = match head.target() {
-        Some(oid) => oid,
-        None => return (0, 0),
+    let Some(local_oid) = head.target() else {
+        return (0, 0);
     };
 
     // Get upstream
-    let branch_name = match head.shorthand() {
-        Some(name) => name.to_string(),
-        None => return (0, 0),
+    let Some(branch_name) = head.shorthand() else {
+        return (0, 0);
     };
 
-    let branch = match repo.find_branch(&branch_name, git2::BranchType::Local) {
-        Ok(b) => b,
-        Err(_) => return (0, 0),
+    let Ok(branch) = repo.find_branch(branch_name, git2::BranchType::Local) else {
+        return (0, 0);
     };
 
-    let upstream = match branch.upstream() {
-        Ok(u) => u,
-        Err(_) => return (0, 0),
+    let Ok(upstream) = branch.upstream() else {
+        return (0, 0);
     };
 
-    let upstream_oid = match upstream.get().target() {
-        Some(oid) => oid,
-        None => return (0, 0),
+    let Some(upstream_oid) = upstream.get().target() else {
+        return (0, 0);
     };
 
     repo.graph_ahead_behind(local_oid, upstream_oid)
-        .map(|(a, b)| (a as u32, b as u32))
+        .map(|(a, b)| {
+            (
+                u32::try_from(a).unwrap_or(u32::MAX),
+                u32::try_from(b).unwrap_or(u32::MAX),
+            )
+        })
         .unwrap_or((0, 0))
 }
 
 // Font Awesome pencil icon
 const PENCIL_ICON: &str = "\u{F040}";
 
-fn render_tmux_title() {
-    let home = env::var("HOME").unwrap_or_default();
-    let pwd = env::current_dir()
-        .map(|p| p.to_string_lossy().to_string())
-        .unwrap_or_default();
-
+fn render_tmux_title(home: &str, pwd: &str) -> String {
     // Home directory
     if pwd == home {
-        println!("\u{1F3E0} ~");
-        return;
+        return "\u{1F3E0} ~".to_string();
     }
 
-    let dir_name = std::path::Path::new(&pwd)
+    let dir_name = std::path::Path::new(pwd)
         .file_name()
-        .map(|n| n.to_string_lossy().to_string())
-        .unwrap_or_else(|| pwd.clone());
+        .map_or_else(|| pwd.to_string(), |n| n.to_string_lossy().to_string());
 
     // Try to open git repo
-    let repo = match Repository::discover(".") {
-        Ok(r) => r,
-        Err(_) => {
-            println!("\u{1F4C1} {}", dir_name);
-            return;
-        }
+    let Ok(repo) = Repository::discover(pwd) else {
+        return format!("\u{1F4C1} {dir_name}");
     };
 
     // Get branch name
@@ -313,12 +300,14 @@ fn render_tmux_title() {
         repo.head()
             .ok()
             .and_then(|h| h.peel_to_commit().ok())
-            .map(|c| c.id().to_string()[..7].to_string())
-            .unwrap_or_else(|| "HEAD".to_string())
+            .map_or_else(
+                || "HEAD".to_string(),
+                |c| c.id().to_string()[..7].to_string(),
+            )
     } else {
         repo.head()
             .ok()
-            .and_then(|h| h.shorthand().map(|s| s.to_string()))
+            .and_then(|h| h.shorthand().map(str::to_string))
             .unwrap_or_else(|| "HEAD".to_string())
     };
 
@@ -326,8 +315,7 @@ fn render_tmux_title() {
     let repo_name = repo
         .workdir()
         .and_then(|p| p.file_name())
-        .map(|n| n.to_string_lossy().to_string())
-        .unwrap_or_else(|| dir_name);
+        .map_or(dir_name, |n| n.to_string_lossy().to_string());
 
     // Check if dirty (any status entries = dirty)
     let mut opts = StatusOptions::new();
@@ -340,28 +328,248 @@ fn render_tmux_title() {
         .unwrap_or(false);
 
     if dirty {
-        println!(
-            "#[fg=colour67]{}#[default] {} {} #[fg=colour245]{}#[default]",
-            BRANCH_ICON, repo_name, branch, PENCIL_ICON
-        );
+        format!(
+            "#[fg=colour67]{BRANCH_ICON}#[default] {repo_name} {branch} #[fg=colour245]{PENCIL_ICON}#[default]"
+        )
     } else {
-        println!(
-            "#[fg=colour39]{}#[default] {} {}",
-            BRANCH_ICON, repo_name, branch
-        );
+        format!("#[fg=colour39]{BRANCH_ICON}#[default] {repo_name} {branch}")
     }
 }
 
 fn main() {
     let args: Vec<String> = env::args().collect();
 
-    match args.get(1).map(|s| s.as_str()) {
-        Some("path") => render_path(),
-        Some("git") => render_git(),
-        Some("tmux-title") => render_tmux_title(),
+    match args.get(1).map(String::as_str) {
+        Some("path") => {
+            let home = env::var("HOME").unwrap_or_default();
+            let pwd = env::current_dir()
+                .map(|p| p.to_string_lossy().to_string())
+                .unwrap_or_default();
+            print!("{}", render_path(&home, &pwd));
+        }
+        Some("git") => print!("{}", render_git(std::path::Path::new("."))),
+        Some("tmux-title") => {
+            let home = env::var("HOME").unwrap_or_default();
+            let pwd = env::current_dir()
+                .map(|p| p.to_string_lossy().to_string())
+                .unwrap_or_default();
+            println!("{}", render_tmux_title(&home, &pwd));
+        }
         _ => {
             eprintln!("Usage: plx <path|git|tmux-title>");
             std::process::exit(1);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use git2::Repository;
+    use std::fs;
+    use tempfile::TempDir;
+
+    // ── fg / bg helpers ──────────────────────────────────────────
+
+    #[test]
+    fn fg_produces_ansi_color() {
+        assert_eq!(fg(31), "\x1b[38;5;31m");
+        assert_eq!(fg(0), "\x1b[38;5;0m");
+        assert_eq!(fg(255), "\x1b[38;5;255m");
+    }
+
+    #[test]
+    fn bg_produces_ansi_color() {
+        assert_eq!(bg(31), "\x1b[48;5;31m");
+        assert_eq!(bg(0), "\x1b[48;5;0m");
+    }
+
+    // ── render_path ──────────────────────────────────────────────
+
+    #[test]
+    fn path_home_shows_tilde() {
+        let out = render_path("/home/user", "/home/user");
+        assert!(out.contains('~'), "expected ~ in: {out}");
+        assert!(!out.contains("/home"), "should not contain raw home path");
+    }
+
+    #[test]
+    fn path_root_shows_slash() {
+        let out = render_path("/home/user", "/");
+        assert!(out.contains('/'), "expected / in: {out}");
+    }
+
+    #[test]
+    fn path_deep_truncation() {
+        let out = render_path("", "/a/b/c/d/e/f/g");
+        assert!(out.contains('…'), "expected ellipsis in: {out}");
+        assert!(out.contains('g'), "expected last component");
+    }
+
+    #[test]
+    fn path_five_components_no_truncation() {
+        let out = render_path("", "/a/b/c/d/e");
+        assert!(!out.contains('…'), "should not truncate 5 components");
+        assert!(out.contains('a'));
+        assert!(out.contains('e'));
+    }
+
+    #[test]
+    fn path_non_home_no_tilde() {
+        let out = render_path("/home/user", "/var/log");
+        assert!(!out.contains('~'), "should not contain ~ for non-home path");
+        assert!(out.contains("var"));
+        assert!(out.contains("log"));
+    }
+
+    #[test]
+    fn path_single_component() {
+        let out = render_path("/home/user", "/tmp");
+        assert!(out.contains("tmp"));
+    }
+
+    #[test]
+    fn path_home_subdir_shows_tilde() {
+        let out = render_path("/home/user", "/home/user/projects/plx");
+        assert!(out.contains('~'), "expected ~ for home subdir");
+        assert!(out.contains("plx"));
+    }
+
+    // ── Helper: create a temp git repo with an initial commit ────
+
+    fn init_repo(dir: &std::path::Path) -> Repository {
+        let repo = Repository::init(dir).expect("failed to init repo");
+        let mut config = repo.config().unwrap();
+        config.set_str("user.name", "Test").unwrap();
+        config.set_str("user.email", "test@test.com").unwrap();
+
+        {
+            let sig = repo.signature().unwrap();
+            let tree_id = repo.index().unwrap().write_tree().unwrap();
+            let tree = repo.find_tree(tree_id).unwrap();
+            repo.commit(Some("HEAD"), &sig, &sig, "init", &tree, &[])
+                .unwrap();
+        }
+        repo
+    }
+
+    // ── render_git ───────────────────────────────────────────────
+
+    #[test]
+    fn git_not_a_repo() {
+        let tmp = TempDir::new().unwrap();
+        let out = render_git(tmp.path());
+        assert!(out.contains(ARROW));
+        assert!(out.contains(RST));
+        assert!(!out.contains(BRANCH_ICON));
+    }
+
+    #[test]
+    fn git_clean_repo_green() {
+        let tmp = TempDir::new().unwrap();
+        init_repo(tmp.path());
+
+        let out = render_git(tmp.path());
+        assert!(out.contains(&bg(148)), "expected green bg(148) in: {out}");
+        assert!(out.contains(BRANCH_ICON));
+    }
+
+    #[test]
+    fn git_modified_file_shows_pencil_count() {
+        let tmp = TempDir::new().unwrap();
+        let repo = init_repo(tmp.path());
+
+        let file_path = tmp.path().join("file.txt");
+        fs::write(&file_path, "hello").unwrap();
+        let mut index = repo.index().unwrap();
+        index.add_path(std::path::Path::new("file.txt")).unwrap();
+        index.write().unwrap();
+        let tree_id = index.write_tree().unwrap();
+        let tree = repo.find_tree(tree_id).unwrap();
+        let head = repo.head().unwrap().peel_to_commit().unwrap();
+        let sig = repo.signature().unwrap();
+        repo.commit(Some("HEAD"), &sig, &sig, "add file", &tree, &[&head])
+            .unwrap();
+
+        fs::write(&file_path, "modified").unwrap();
+
+        let out = render_git(tmp.path());
+        assert!(out.contains(&bg(161)), "expected pink bg(161) in: {out}");
+        assert!(out.contains('✎'), "expected pencil icon in: {out}");
+    }
+
+    #[test]
+    fn git_staged_file_shows_checkmark() {
+        let tmp = TempDir::new().unwrap();
+        let repo = init_repo(tmp.path());
+
+        let file_path = tmp.path().join("new.txt");
+        fs::write(&file_path, "new").unwrap();
+        let mut index = repo.index().unwrap();
+        index.add_path(std::path::Path::new("new.txt")).unwrap();
+        index.write().unwrap();
+
+        let out = render_git(tmp.path());
+        assert!(out.contains('✔'), "expected checkmark in: {out}");
+    }
+
+    #[test]
+    fn git_untracked_file_shows_plus() {
+        let tmp = TempDir::new().unwrap();
+        init_repo(tmp.path());
+
+        fs::write(tmp.path().join("untracked.txt"), "x").unwrap();
+
+        let out = render_git(tmp.path());
+        assert!(out.contains('+'), "expected + for untracked in: {out}");
+    }
+
+    // ── render_tmux_title ────────────────────────────────────────
+
+    #[test]
+    fn tmux_home_directory() {
+        let tmp = TempDir::new().unwrap();
+        let home = tmp.path().to_string_lossy().to_string();
+        let out = render_tmux_title(&home, &home);
+        assert!(out.contains('\u{1F3E0}'), "expected house emoji");
+        assert!(out.contains('~'));
+    }
+
+    #[test]
+    fn tmux_non_repo_directory() {
+        let tmp = TempDir::new().unwrap();
+        let pwd = tmp.path().to_string_lossy().to_string();
+        let out = render_tmux_title("/nonexistent", &pwd);
+        assert!(out.contains('\u{1F4C1}'), "expected folder emoji");
+    }
+
+    #[test]
+    fn tmux_clean_repo() {
+        let tmp = TempDir::new().unwrap();
+        init_repo(tmp.path());
+        let pwd = tmp.path().to_string_lossy().to_string();
+
+        let out = render_tmux_title("/nonexistent", &pwd);
+        assert!(
+            out.contains("#[fg=colour39]"),
+            "expected blue branch in: {out}"
+        );
+        assert!(out.contains(BRANCH_ICON));
+        assert!(!out.contains(PENCIL_ICON), "clean repo should not have pencil");
+    }
+
+    #[test]
+    fn tmux_dirty_repo() {
+        let tmp = TempDir::new().unwrap();
+        init_repo(tmp.path());
+        fs::write(tmp.path().join("dirty.txt"), "x").unwrap();
+        let pwd = tmp.path().to_string_lossy().to_string();
+
+        let out = render_tmux_title("/nonexistent", &pwd);
+        assert!(
+            out.contains("#[fg=colour67]"),
+            "expected grey branch in: {out}"
+        );
+        assert!(out.contains(PENCIL_ICON), "dirty repo should have pencil");
     }
 }
