@@ -18,6 +18,11 @@ fn main() {
         }
         Some("git") => print!("{}", segments::git::render(Path::new("."))),
         Some("nix-shell") => print!("{}", segments::nix_shell::render()),
+        Some("prompt") => {
+            let max_dir_size = args.get(2).and_then(|s| s.parse::<usize>().ok());
+            let mut ctx = segments::prompt::PromptContext::gather(max_dir_size);
+            print!("{}", segments::prompt::render(&mut ctx));
+        }
         Some("tmux-title") => {
             let home = env::var("HOME").unwrap_or_default();
             let pwd = env::current_dir()
@@ -26,7 +31,7 @@ fn main() {
             println!("{}", segments::tmux_title::render(&home, &pwd));
         }
         _ => {
-            eprintln!("Usage: plx <path|git|nix-shell|tmux-title>");
+            eprintln!("Usage: plx <path|git|nix-shell|prompt|tmux-title>");
             std::process::exit(1);
         }
     }

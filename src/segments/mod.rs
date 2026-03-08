@@ -1,6 +1,7 @@
 pub mod git;
 pub mod nix_shell;
 pub mod path;
+pub mod prompt;
 pub mod tmux_title;
 
 #[cfg(test)]

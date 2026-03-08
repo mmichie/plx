@@ -6,10 +6,10 @@ use crate::color::{bg, fg, ARROW, BRANCH_ICON, RST};
 
 #[allow(clippy::too_many_lines)]
 #[must_use]
-pub fn render(discover_from: &std::path::Path) -> String {
-    let Ok(mut repo) = Repository::discover(discover_from) else {
+pub fn render_with(repo: Option<&mut Repository>, from_bg: u8) -> (String, u8) {
+    let Some(repo) = repo else {
         // Not in a git repo — just output the closing arrow (dir_end)
-        return format!("{}{}{ARROW}{RST}", fg(237), bg(236));
+        return (format!("{}{}{ARROW}{RST}", fg(from_bg), bg(236)), 236);
     };
 
     // Get branch name
@@ -68,7 +68,7 @@ pub fn render(discover_from: &std::path::Path) -> String {
     }
 
     // Ahead/behind
-    let (ahead, behind) = ahead_behind(&repo);
+    let (ahead, behind) = ahead_behind(repo);
 
     // Stash count
     let mut stashed = 0u32;
@@ -101,7 +101,7 @@ pub fn render(discover_from: &std::path::Path) -> String {
         let _ = write!(
             out,
             "{}{}{ARROW} {}{BRANCH_ICON} {branch} ",
-            fg(237), bg(161),
+            fg(from_bg), bg(161),
             fg(15),
         );
         let mut prev: u8 = 161;
@@ -158,13 +158,19 @@ pub fn render(discover_from: &std::path::Path) -> String {
         let _ = write!(
             out,
             "{}{}{ARROW} {}{BRANCH_ICON} {branch} {}{}{ARROW}{RST}",
-            fg(237), bg(148),
+            fg(from_bg), bg(148),
             fg(0),
             fg(148), bg(236),
         );
     }
 
-    out
+    (out, 236)
+}
+
+#[must_use]
+pub fn render(discover_from: &std::path::Path) -> String {
+    let mut repo = Repository::discover(discover_from).ok();
+    render_with(repo.as_mut(), 237).0
 }
 
 fn ahead_behind(repo: &Repository) -> (u32, u32) {
@@ -205,8 +211,8 @@ fn ahead_behind(repo: &Repository) -> (u32, u32) {
 
 #[cfg(test)]
 mod tests {
-    use super::render;
-    use crate::color::{bg, ARROW, BRANCH_ICON, RST};
+    use super::{render, render_with};
+    use crate::color::{bg, fg, ARROW, BRANCH_ICON, RST};
     use crate::segments::testutil::init_repo;
     use std::fs;
     use tempfile::TempDir;
@@ -278,5 +284,24 @@ mod tests {
 
         let out = render(tmp.path());
         assert!(out.contains('+'), "expected + for untracked in: {out}");
+    }
+
+    #[test]
+    fn render_with_pre_discovered_repo() {
+        let tmp = TempDir::new().unwrap();
+        let mut repo = init_repo(tmp.path());
+
+        let (out, end_bg) = render_with(Some(&mut repo), 237);
+        assert!(out.contains(&bg(148)), "expected green bg(148) in: {out}");
+        assert!(out.contains(BRANCH_ICON));
+        assert_eq!(end_bg, 236);
+    }
+
+    #[test]
+    fn render_with_no_repo() {
+        let (out, end_bg) = render_with(None, 240);
+        assert!(out.contains(&fg(240)), "expected fg(240) in: {out}");
+        assert!(out.contains(ARROW));
+        assert_eq!(end_bg, 236);
     }
 }

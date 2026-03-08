@@ -11,7 +11,7 @@ fn truncate_dir(name: &str, max: usize) -> String {
 }
 
 #[must_use]
-pub fn render(home: &str, pwd: &str, max_dir_size: Option<usize>) -> String {
+pub fn render_with(home: &str, pwd: &str, max_dir_size: Option<usize>, from_bg: u8) -> (String, u8) {
     let path = if !home.is_empty() && pwd.starts_with(home) {
         format!("~{}", &pwd[home.len()..])
     } else {
@@ -51,7 +51,7 @@ pub fn render(home: &str, pwd: &str, max_dir_size: Option<usize>) -> String {
         let _ = write!(
             out,
             "{}{}{} {}{} {}{}{}",
-            fg(238),
+            fg(from_bg),
             bg(31),
             ARROW,
             fg(15),
@@ -64,7 +64,7 @@ pub fn render(home: &str, pwd: &str, max_dir_size: Option<usize>) -> String {
         let _ = write!(
             out,
             "{}{}{} {}{} {}{}{}",
-            fg(238),
+            fg(from_bg),
             bg(31),
             ARROW,
             fg(15),
@@ -85,12 +85,17 @@ pub fn render(home: &str, pwd: &str, max_dir_size: Option<usize>) -> String {
         let _ = write!(out, " ");
     }
 
-    out
+    (out, 237)
+}
+
+#[must_use]
+pub fn render(home: &str, pwd: &str, max_dir_size: Option<usize>) -> String {
+    render_with(home, pwd, max_dir_size, 238).0
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{render, truncate_dir};
+    use super::{render, render_with, truncate_dir};
 
     #[test]
     fn home_shows_tilde() {
@@ -173,5 +178,15 @@ mod tests {
             out.contains("very-long-directory-name"),
             "should preserve full name: {out}"
         );
+    }
+
+    #[test]
+    fn render_with_uses_from_bg() {
+        let (out, end_bg) = render_with("/home/user", "/home/user/src", None, 240);
+        assert!(
+            out.contains(&crate::color::fg(240)),
+            "expected fg(240) in: {out}"
+        );
+        assert_eq!(end_bg, 237);
     }
 }
