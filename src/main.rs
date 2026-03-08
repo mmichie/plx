@@ -360,7 +360,7 @@ fn main() {
         Some("git") => render_git(),
         Some("tmux-title") => render_tmux_title(),
         _ => {
-            eprintln!("Usage: starship-segments <path|git|tmux-title>");
+            eprintln!("Usage: plx <path|git|tmux-title>");
             std::process::exit(1);
         }
     }

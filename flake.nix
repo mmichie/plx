@@ -47,7 +47,7 @@
     {
       packages = forAllSystems (system: {
         default = buildFor system;
-        starship-segments = buildFor system;
+        plx = buildFor system;
       });
 
       formatter = forAllSystems (system: nixpkgs.legacyPackages.${system}.nixfmt-tree);

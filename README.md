@@ -1,11 +1,11 @@
-# starship-segments
+# plx
 
 Fast, powerline-styled terminal segments written in Rust. Renders path, git status, and tmux window titles using [libgit2](https://libgit2.org/) — no git subprocess calls.
 
 ## Usage
 
 ```
-starship-segments <path|git|tmux-title>
+plx <path|git|tmux-title>
 ```
 
 - **`path`** — Powerline path segment with truncation and home directory collapsing
@@ -34,13 +34,13 @@ cargo build --release
 
 ```toml
 [custom.path_segment]
-command = "starship-segments path"
+command = "plx path"
 when = "true"
 format = "$output"
 shell = ["bash", "--nologin"]
 
 [custom.git_segment]
-command = "starship-segments git"
+command = "plx git"
 when = "true"
 format = "$output"
 shell = ["bash", "--nologin"]
@@ -49,6 +49,6 @@ shell = ["bash", "--nologin"]
 ### Tmux status bar
 
 ```tmux
-set -g automatic-rename-format '#{starship-segments tmux-title}'
+set -g automatic-rename-format '#{plx tmux-title}'
 # or via a shell wrapper in status-right
 ```
