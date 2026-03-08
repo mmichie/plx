@@ -2,47 +2,76 @@ use std::fmt::Write;
 
 use crate::color::{bg, fg, ARROW, THIN};
 
+fn truncate_dir(name: &str, max: usize) -> String {
+    if max < 2 || name.chars().count() <= max {
+        return name.to_string();
+    }
+    let truncated: String = name.chars().take(max - 1).collect();
+    format!("{truncated}\u{2026}")
+}
+
 #[must_use]
-pub fn render(home: &str, pwd: &str) -> String {
+pub fn render(home: &str, pwd: &str, max_dir_size: Option<usize>) -> String {
     let path = if !home.is_empty() && pwd.starts_with(home) {
         format!("~{}", &pwd[home.len()..])
     } else {
         pwd.to_string()
     };
 
-    let mut parts: Vec<&str> = path.split('/').filter(|s| !s.is_empty()).collect();
+    let raw_parts: Vec<&str> = path.split('/').filter(|s| !s.is_empty()).collect();
 
-    if parts.is_empty() {
-        parts = vec!["/"];
-    }
-
-    let n = parts.len();
-    let truncated;
-    let parts = if n > 5 {
-        truncated = [&["…"][..], &parts[n - 4..]].concat();
-        &truncated
+    let raw_parts = if raw_parts.is_empty() {
+        vec!["/"]
     } else {
-        &parts
+        raw_parts
     };
-    let n = parts.len();
 
+    let n = raw_parts.len();
+    let raw_parts = if n > 5 {
+        [&["\u{2026}"][..], &raw_parts[n - 4..]].concat()
+    } else {
+        raw_parts
+    };
+
+    let parts: Vec<String> = raw_parts
+        .iter()
+        .map(|p| {
+            if let Some(max) = max_dir_size {
+                truncate_dir(p, max)
+            } else {
+                (*p).to_string()
+            }
+        })
+        .collect();
+
+    let n = parts.len();
     let mut out = String::with_capacity(256);
 
     if n <= 1 {
         let _ = write!(
             out,
             "{}{}{} {}{} {}{}{}",
-            fg(238), bg(31), ARROW,
-            fg(15), parts.first().unwrap_or(&""),
-            fg(31), bg(237), ARROW
+            fg(238),
+            bg(31),
+            ARROW,
+            fg(15),
+            parts.first().map_or("", String::as_str),
+            fg(31),
+            bg(237),
+            ARROW
         );
     } else {
         let _ = write!(
             out,
             "{}{}{} {}{} {}{}{}",
-            fg(238), bg(31), ARROW,
-            fg(15), parts[0],
-            fg(31), bg(237), ARROW
+            fg(238),
+            bg(31),
+            ARROW,
+            fg(15),
+            parts[0],
+            fg(31),
+            bg(237),
+            ARROW
         );
 
         let last = parts.len() - 1;
@@ -61,39 +90,39 @@ pub fn render(home: &str, pwd: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::render;
+    use super::{render, truncate_dir};
 
     #[test]
     fn home_shows_tilde() {
-        let out = render("/home/user", "/home/user");
+        let out = render("/home/user", "/home/user", None);
         assert!(out.contains('~'), "expected ~ in: {out}");
         assert!(!out.contains("/home"), "should not contain raw home path");
     }
 
     #[test]
     fn root_shows_slash() {
-        let out = render("/home/user", "/");
+        let out = render("/home/user", "/", None);
         assert!(out.contains('/'), "expected / in: {out}");
     }
 
     #[test]
     fn deep_truncation() {
-        let out = render("", "/a/b/c/d/e/f/g");
-        assert!(out.contains('…'), "expected ellipsis in: {out}");
+        let out = render("", "/a/b/c/d/e/f/g", None);
+        assert!(out.contains('\u{2026}'), "expected ellipsis in: {out}");
         assert!(out.contains('g'), "expected last component");
     }
 
     #[test]
     fn five_components_no_truncation() {
-        let out = render("", "/a/b/c/d/e");
-        assert!(!out.contains('…'), "should not truncate 5 components");
+        let out = render("", "/a/b/c/d/e", None);
+        assert!(!out.contains('\u{2026}'), "should not truncate 5 components");
         assert!(out.contains('a'));
         assert!(out.contains('e'));
     }
 
     #[test]
     fn non_home_no_tilde() {
-        let out = render("/home/user", "/var/log");
+        let out = render("/home/user", "/var/log", None);
         assert!(!out.contains('~'), "should not contain ~ for non-home path");
         assert!(out.contains("var"));
         assert!(out.contains("log"));
@@ -101,14 +130,48 @@ mod tests {
 
     #[test]
     fn single_component() {
-        let out = render("/home/user", "/tmp");
+        let out = render("/home/user", "/tmp", None);
         assert!(out.contains("tmp"));
     }
 
     #[test]
     fn home_subdir_shows_tilde() {
-        let out = render("/home/user", "/home/user/projects/plx");
+        let out = render("/home/user", "/home/user/projects/plx", None);
         assert!(out.contains('~'), "expected ~ for home subdir");
         assert!(out.contains("plx"));
+    }
+
+    #[test]
+    fn truncate_dir_long_name() {
+        assert_eq!(truncate_dir("very-long-directory-name", 10), "very-long\u{2026}");
+    }
+
+    #[test]
+    fn truncate_dir_short_name_unchanged() {
+        assert_eq!(truncate_dir("short", 10), "short");
+    }
+
+    #[test]
+    fn truncate_dir_exact_length() {
+        assert_eq!(truncate_dir("exactly10!", 10), "exactly10!");
+    }
+
+    #[test]
+    fn max_dir_size_truncates_long_parts() {
+        let out = render("", "/home/very-long-directory-name/src", Some(10));
+        assert!(
+            out.contains("very-long\u{2026}"),
+            "expected truncated dir in: {out}"
+        );
+        assert!(out.contains("src"), "short names should be untouched");
+    }
+
+    #[test]
+    fn max_dir_size_none_preserves_long_names() {
+        let out = render("", "/home/very-long-directory-name/src", None);
+        assert!(
+            out.contains("very-long-directory-name"),
+            "should preserve full name: {out}"
+        );
     }
 }

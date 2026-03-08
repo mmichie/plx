@@ -1,4 +1,5 @@
 pub mod git;
+pub mod nix_shell;
 pub mod path;
 pub mod tmux_title;
 
