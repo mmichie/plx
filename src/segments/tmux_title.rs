@@ -20,12 +20,12 @@ pub fn render_from_info(home: &str, pwd: &str, git_info: Option<&GitInfo>) -> St
 
     if info.dirty {
         format!(
-            "#[fg=colour67]{BRANCH_ICON}#[default] {} {} #[fg=colour245]{PENCIL_ICON}#[default]",
+            "#[fg=colour174]{BRANCH_ICON}#[default] {} {} #[fg=colour245]{PENCIL_ICON}#[default]",
             info.repo_name, info.branch
         )
     } else {
         format!(
-            "#[fg=colour39]{BRANCH_ICON}#[default] {} {}",
+            "#[fg=colour117]{BRANCH_ICON}#[default] {} {}",
             info.repo_name, info.branch
         )
     }
@@ -80,10 +80,10 @@ pub fn render(home: &str, pwd: &str) -> String {
 
     if dirty {
         format!(
-            "#[fg=colour67]{BRANCH_ICON}#[default] {repo_name} {branch} #[fg=colour245]{PENCIL_ICON}#[default]"
+            "#[fg=colour174]{BRANCH_ICON}#[default] {repo_name} {branch} #[fg=colour245]{PENCIL_ICON}#[default]"
         )
     } else {
-        format!("#[fg=colour39]{BRANCH_ICON}#[default] {repo_name} {branch}")
+        format!("#[fg=colour117]{BRANCH_ICON}#[default] {repo_name} {branch}")
     }
 }
 
@@ -120,7 +120,7 @@ mod tests {
 
         let out = render("/nonexistent", &pwd);
         assert!(
-            out.contains("#[fg=colour39]"),
+            out.contains("#[fg=colour117]"),
             "expected blue branch in: {out}"
         );
         assert!(out.contains(BRANCH_ICON));
@@ -136,8 +136,8 @@ mod tests {
 
         let out = render("/nonexistent", &pwd);
         assert!(
-            out.contains("#[fg=colour67]"),
-            "expected grey branch in: {out}"
+            out.contains("#[fg=colour174]"),
+            "expected pink branch in: {out}"
         );
         assert!(out.contains(PENCIL_ICON), "dirty repo should have pencil");
     }
