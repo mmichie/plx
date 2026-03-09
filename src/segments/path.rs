@@ -1,6 +1,6 @@
 use std::fmt::Write;
 
-use crate::color::{bg, fg, ARROW, THIN};
+use crate::color::{arrow, fg, THIN};
 
 fn truncate_dir(name: &str, max: usize) -> String {
     if max < 2 || name.chars().count() <= max {
@@ -11,7 +11,7 @@ fn truncate_dir(name: &str, max: usize) -> String {
 }
 
 #[must_use]
-pub fn render_with(home: &str, pwd: &str, max_dir_size: Option<usize>, from_bg: u8) -> (String, u8) {
+pub fn render_with(home: &str, pwd: &str, max_dir_size: Option<usize>, from_bg: Option<u8>) -> (String, Option<u8>) {
     let path = if !home.is_empty() && pwd.starts_with(home) {
         format!("~{}", &pwd[home.len()..])
     } else {
@@ -50,28 +50,20 @@ pub fn render_with(home: &str, pwd: &str, max_dir_size: Option<usize>, from_bg: 
     if n <= 1 {
         let _ = write!(
             out,
-            "{}{}{} {}{} {}{}{}",
-            fg(from_bg),
-            bg(31),
-            ARROW,
+            "{} {}{} {}",
+            arrow(from_bg, 31),
             fg(15),
             parts.first().map_or("", String::as_str),
-            fg(31),
-            bg(237),
-            ARROW
+            arrow(Some(31), 237),
         );
     } else {
         let _ = write!(
             out,
-            "{}{}{} {}{} {}{}{}",
-            fg(from_bg),
-            bg(31),
-            ARROW,
+            "{} {}{} {}",
+            arrow(from_bg, 31),
             fg(15),
             parts[0],
-            fg(31),
-            bg(237),
-            ARROW
+            arrow(Some(31), 237),
         );
 
         let last = parts.len() - 1;
@@ -85,12 +77,12 @@ pub fn render_with(home: &str, pwd: &str, max_dir_size: Option<usize>, from_bg: 
         let _ = write!(out, " ");
     }
 
-    (out, 237)
+    (out, Some(237))
 }
 
 #[must_use]
 pub fn render(home: &str, pwd: &str, max_dir_size: Option<usize>) -> String {
-    render_with(home, pwd, max_dir_size, 238).0
+    render_with(home, pwd, max_dir_size, Some(238)).0
 }
 
 #[cfg(test)]
@@ -182,11 +174,11 @@ mod tests {
 
     #[test]
     fn render_with_uses_from_bg() {
-        let (out, end_bg) = render_with("/home/user", "/home/user/src", None, 240);
+        let (out, end_bg) = render_with("/home/user", "/home/user/src", None, Some(240));
         assert!(
             out.contains(&crate::color::fg(240)),
             "expected fg(240) in: {out}"
         );
-        assert_eq!(end_bg, 237);
+        assert_eq!(end_bg, Some(237));
     }
 }

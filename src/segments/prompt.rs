@@ -1,6 +1,6 @@
 use git2::Repository;
 
-use crate::segments::{git, nix_shell, path};
+use crate::segments::{git, hostname, nix_shell, path, username, venv};
 
 pub struct PromptContext {
     pub home: String,
@@ -28,8 +28,16 @@ impl PromptContext {
 
 #[must_use]
 pub fn render(ctx: &mut PromptContext) -> String {
-    let mut from_bg: u8 = 238;
     let mut out = String::with_capacity(1024);
+
+    out.push_str(&venv::render_prefix());
+
+    let (seg, mut from_bg) = username::render_with(None);
+    out.push_str(&seg);
+
+    let (seg, next_bg) = hostname::render_with(from_bg);
+    out.push_str(&seg);
+    from_bg = next_bg;
 
     let (seg, next_bg) = nix_shell::render_with(from_bg);
     out.push_str(&seg);
@@ -50,14 +58,16 @@ mod tests {
     use super::{render, PromptContext};
     use crate::color::{ARROW, BRANCH_ICON, RST};
     use crate::segments::testutil::init_repo;
+    use serial_test::serial;
     use tempfile::TempDir;
 
     #[test]
+    #[serial]
     fn renders_path_and_git() {
         let tmp = TempDir::new().unwrap();
         let repo = init_repo(tmp.path());
 
-        // SAFETY: test-only, single-threaded test runner
+        // SAFETY: test-only
         unsafe { std::env::remove_var("IN_NIX_SHELL") };
 
         let mut ctx = PromptContext {
@@ -73,8 +83,9 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn renders_without_repo() {
-        // SAFETY: test-only, single-threaded test runner
+        // SAFETY: test-only
         unsafe { std::env::remove_var("IN_NIX_SHELL") };
 
         let mut ctx = PromptContext {
@@ -90,8 +101,9 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn full_chain_ends_with_reset() {
-        // SAFETY: test-only, single-threaded test runner
+        // SAFETY: test-only
         unsafe { std::env::remove_var("IN_NIX_SHELL") };
 
         let mut ctx = PromptContext {

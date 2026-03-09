@@ -3,6 +3,18 @@ pub const THIN: &str = "\u{E0B1}";
 pub const BRANCH_ICON: &str = "\u{E0A0}";
 pub const PENCIL_ICON: &str = "\u{F040}";
 pub const RST: &str = "\x1b[0m";
+pub const BOLD: &str = "\x1b[1m";
+pub const UNBOLD: &str = "\x1b[22m";
+
+/// Powerline arrow transition. `None` means first segment (no arrow glyph).
+#[must_use]
+pub fn arrow(from_bg: Option<u8>, to_bg: u8) -> String {
+    if let Some(prev) = from_bg {
+        format!("{}{}{ARROW}", fg(prev), bg(to_bg))
+    } else {
+        bg(to_bg)
+    }
+}
 
 #[must_use]
 pub fn fg(color: u8) -> String {

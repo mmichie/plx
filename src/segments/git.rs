@@ -2,14 +2,14 @@ use std::fmt::Write;
 
 use git2::{Repository, StatusOptions, StatusShow};
 
-use crate::color::{bg, fg, ARROW, BRANCH_ICON, RST};
+use crate::color::{arrow, bg, fg, ARROW, BRANCH_ICON, RST};
 
 #[allow(clippy::too_many_lines)]
 #[must_use]
-pub fn render_with(repo: Option<&mut Repository>, from_bg: u8) -> (String, u8) {
+pub fn render_with(repo: Option<&mut Repository>, from_bg: Option<u8>) -> (String, Option<u8>) {
     let Some(repo) = repo else {
         // Not in a git repo — just output the closing arrow (dir_end)
-        return (format!("{}{}{ARROW}{RST}", fg(from_bg), bg(236)), 236);
+        return (format!("{}{RST}", arrow(from_bg, 236)), Some(236));
     };
 
     // Get branch name
@@ -100,8 +100,8 @@ pub fn render_with(repo: Option<&mut Repository>, from_bg: u8) -> (String, u8) {
         // Pink branch: arrow from path(237) to 161
         let _ = write!(
             out,
-            "{}{}{ARROW} {}{BRANCH_ICON} {branch} ",
-            fg(from_bg), bg(161),
+            "{} {}{BRANCH_ICON} {branch} ",
+            arrow(from_bg, 161),
             fg(15),
         );
         let mut prev: u8 = 161;
@@ -157,20 +157,20 @@ pub fn render_with(repo: Option<&mut Repository>, from_bg: u8) -> (String, u8) {
         // Green branch (clean): arrow from path(237) to 148
         let _ = write!(
             out,
-            "{}{}{ARROW} {}{BRANCH_ICON} {branch} {}{}{ARROW}{RST}",
-            fg(from_bg), bg(148),
+            "{} {}{BRANCH_ICON} {branch} {}{}{ARROW}{RST}",
+            arrow(from_bg, 148),
             fg(0),
             fg(148), bg(236),
         );
     }
 
-    (out, 236)
+    (out, Some(236))
 }
 
 #[must_use]
 pub fn render(discover_from: &std::path::Path) -> String {
     let mut repo = Repository::discover(discover_from).ok();
-    render_with(repo.as_mut(), 237).0
+    render_with(repo.as_mut(), Some(237)).0
 }
 
 fn ahead_behind(repo: &Repository) -> (u32, u32) {
@@ -291,17 +291,17 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         let mut repo = init_repo(tmp.path());
 
-        let (out, end_bg) = render_with(Some(&mut repo), 237);
+        let (out, end_bg) = render_with(Some(&mut repo), Some(237));
         assert!(out.contains(&bg(148)), "expected green bg(148) in: {out}");
         assert!(out.contains(BRANCH_ICON));
-        assert_eq!(end_bg, 236);
+        assert_eq!(end_bg, Some(236));
     }
 
     #[test]
     fn render_with_no_repo() {
-        let (out, end_bg) = render_with(None, 240);
+        let (out, end_bg) = render_with(None, Some(240));
         assert!(out.contains(&fg(240)), "expected fg(240) in: {out}");
         assert!(out.contains(ARROW));
-        assert_eq!(end_bg, 236);
+        assert_eq!(end_bg, Some(236));
     }
 }

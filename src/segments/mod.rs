@@ -1,8 +1,11 @@
 pub mod git;
+pub mod hostname;
 pub mod nix_shell;
 pub mod path;
 pub mod prompt;
 pub mod tmux_title;
+pub mod username;
+pub mod venv;
 
 #[cfg(test)]
 pub(crate) mod testutil {
