@@ -4,12 +4,22 @@ use git2::{Repository, StatusOptions, StatusShow};
 
 use crate::color::{arrow, bg, fg, ARROW, BRANCH_ICON, RST};
 
+/// Pre-computed git metadata for reuse by other segments (e.g. tmux title).
+pub struct GitInfo {
+    pub repo_name: String,
+    pub branch: String,
+    pub dirty: bool,
+}
+
 #[allow(clippy::too_many_lines)]
 #[must_use]
-pub fn render_with(repo: Option<&mut Repository>, from_bg: Option<u8>) -> (String, Option<u8>) {
+pub fn render_with(
+    repo: Option<&mut Repository>,
+    from_bg: Option<u8>,
+) -> (String, Option<u8>, Option<GitInfo>) {
     let Some(repo) = repo else {
         // Not in a git repo — just output the closing arrow (dir_end)
-        return (arrow(from_bg, 236), Some(236));
+        return (arrow(from_bg, 236), Some(236), None);
     };
 
     // Get branch name
@@ -94,6 +104,17 @@ pub fn render_with(repo: Option<&mut Repository>, from_bg: Option<u8>) -> (Strin
     let dirty = staged + modified + untracked + conflicted + stashed + ahead + behind > 0
         || state.is_some();
 
+    let repo_name = repo
+        .workdir()
+        .and_then(|p| p.file_name())
+        .map_or_else(String::new, |n| n.to_string_lossy().to_string());
+
+    let git_info = GitInfo {
+        repo_name,
+        branch: branch.clone(),
+        dirty,
+    };
+
     let mut out = String::with_capacity(512);
 
     if dirty {
@@ -164,13 +185,13 @@ pub fn render_with(repo: Option<&mut Repository>, from_bg: Option<u8>) -> (Strin
         );
     }
 
-    (out, Some(236))
+    (out, Some(236), Some(git_info))
 }
 
 #[must_use]
 pub fn render(discover_from: &std::path::Path) -> String {
     let mut repo = Repository::discover(discover_from).ok();
-    let (out, _) = render_with(repo.as_mut(), Some(237));
+    let (out, _, _) = render_with(repo.as_mut(), Some(237));
     format!("{out}{RST}")
 }
 
@@ -292,17 +313,21 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         let mut repo = init_repo(tmp.path());
 
-        let (out, end_bg) = render_with(Some(&mut repo), Some(237));
+        let (out, end_bg, git_info) = render_with(Some(&mut repo), Some(237));
         assert!(out.contains(&bg(148)), "expected green bg(148) in: {out}");
         assert!(out.contains(BRANCH_ICON));
         assert_eq!(end_bg, Some(236));
+        let info = git_info.expect("should have GitInfo for a repo");
+        assert!(!info.dirty, "clean repo should not be dirty");
+        assert!(!info.repo_name.is_empty(), "repo_name should be set");
     }
 
     #[test]
     fn render_with_no_repo() {
-        let (out, end_bg) = render_with(None, Some(240));
+        let (out, end_bg, git_info) = render_with(None, Some(240));
         assert!(out.contains(&fg(240)), "expected fg(240) in: {out}");
         assert!(out.contains(ARROW));
         assert_eq!(end_bg, Some(236));
+        assert!(git_info.is_none(), "no repo should yield None");
     }
 }

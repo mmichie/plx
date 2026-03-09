@@ -30,7 +30,13 @@ fn main() {
                 duration_ms,
                 job_count,
             );
-            print!("{}", color::zsh_wrap_escapes(&segments::prompt::render(&mut ctx)));
+            let raw = segments::prompt::render(&mut ctx);
+            // Only the prompt line gets zsh escape wrapping; tmux title is plain.
+            if let Some((prompt, title)) = raw.split_once('\n') {
+                print!("{}\n{}", color::zsh_wrap_escapes(prompt), title);
+            } else {
+                print!("{}", color::zsh_wrap_escapes(&raw));
+            }
         }
         Some("tmux-title") => {
             let home = env::var("HOME").unwrap_or_default();

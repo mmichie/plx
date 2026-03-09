@@ -1,6 +1,35 @@
 use git2::{Repository, StatusOptions, StatusShow};
 
 use crate::color::{BRANCH_ICON, PENCIL_ICON};
+use crate::segments::git::GitInfo;
+
+/// Render tmux title from pre-computed `GitInfo`, avoiding redundant repo discovery.
+#[must_use]
+pub fn render_from_info(home: &str, pwd: &str, git_info: Option<&GitInfo>) -> String {
+    if pwd == home {
+        return "\u{1F3E0} ~".to_string();
+    }
+
+    let dir_name = std::path::Path::new(pwd)
+        .file_name()
+        .map_or_else(|| pwd.to_string(), |n| n.to_string_lossy().to_string());
+
+    let Some(info) = git_info else {
+        return format!("\u{1F4C1} {dir_name}");
+    };
+
+    if info.dirty {
+        format!(
+            "#[fg=colour67]{BRANCH_ICON}#[default] {} {} #[fg=colour245]{PENCIL_ICON}#[default]",
+            info.repo_name, info.branch
+        )
+    } else {
+        format!(
+            "#[fg=colour39]{BRANCH_ICON}#[default] {} {}",
+            info.repo_name, info.branch
+        )
+    }
+}
 
 #[must_use]
 pub fn render(home: &str, pwd: &str) -> String {

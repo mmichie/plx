@@ -1,7 +1,8 @@
 use git2::Repository;
 
 use crate::segments::{
-    character, cmd_duration, git, hostname, jobs, nix_shell, path, reset, status, username, venv,
+    character, cmd_duration, git, hostname, jobs, nix_shell, path, reset, status, tmux_title,
+    username, venv,
 };
 
 pub struct PromptContext {
@@ -12,6 +13,7 @@ pub struct PromptContext {
     pub exit_status: i32,
     pub duration_ms: u64,
     pub job_count: u32,
+    pub in_tmux: bool,
 }
 
 impl PromptContext {
@@ -27,6 +29,7 @@ impl PromptContext {
             .map(|p| p.to_string_lossy().to_string())
             .unwrap_or_default();
         let repo = Repository::discover(".").ok();
+        let in_tmux = std::env::var("TMUX").is_ok();
         Self {
             home,
             pwd,
@@ -35,6 +38,7 @@ impl PromptContext {
             exit_status,
             duration_ms,
             job_count,
+            in_tmux,
         }
     }
 }
@@ -60,7 +64,7 @@ pub fn render(ctx: &mut PromptContext) -> String {
     out.push_str(&seg);
     from_bg = next_bg;
 
-    let (seg, next_bg) = git::render_with(ctx.repo.as_mut(), from_bg);
+    let (seg, next_bg, git_info) = git::render_with(ctx.repo.as_mut(), from_bg);
     out.push_str(&seg);
     from_bg = next_bg;
 
@@ -81,6 +85,12 @@ pub fn render(ctx: &mut PromptContext) -> String {
     from_bg = next_bg;
 
     out.push_str(&reset::render_final(from_bg));
+
+    if ctx.in_tmux {
+        let title = tmux_title::render_from_info(&ctx.home, &ctx.pwd, git_info.as_ref());
+        out.push('\n');
+        out.push_str(&title);
+    }
 
     out
 }
@@ -110,6 +120,7 @@ mod tests {
             exit_status: 0,
             duration_ms: 0,
             job_count: 0,
+            in_tmux: false,
         };
 
         let out = render(&mut ctx);
@@ -131,11 +142,64 @@ mod tests {
             exit_status: 0,
             duration_ms: 0,
             job_count: 0,
+            in_tmux: false,
         };
 
         let out = render(&mut ctx);
         assert!(out.contains(ARROW), "expected arrows in: {out}");
         assert!(!out.contains(BRANCH_ICON), "should not contain branch icon");
+    }
+
+    #[test]
+    #[serial]
+    fn tmux_mode_appends_title_line() {
+        let tmp = TempDir::new().unwrap();
+        let repo = init_repo(tmp.path());
+
+        // SAFETY: test-only
+        unsafe { std::env::remove_var("IN_NIX_SHELL") };
+
+        let mut ctx = PromptContext {
+            home: "/home/user".to_string(),
+            pwd: tmp.path().to_string_lossy().to_string(),
+            max_dir_size: None,
+            repo: Some(repo),
+            exit_status: 0,
+            duration_ms: 0,
+            job_count: 0,
+            in_tmux: true,
+        };
+
+        let out = render(&mut ctx);
+        let lines: Vec<&str> = out.splitn(2, '\n').collect();
+        assert_eq!(lines.len(), 2, "expected two lines in tmux mode: {out}");
+        assert!(lines[0].contains(BRANCH_ICON), "prompt line should have branch");
+        assert!(
+            lines[1].contains(BRANCH_ICON),
+            "tmux title should have branch: {}",
+            lines[1]
+        );
+    }
+
+    #[test]
+    #[serial]
+    fn no_tmux_single_line() {
+        // SAFETY: test-only
+        unsafe { std::env::remove_var("IN_NIX_SHELL") };
+
+        let mut ctx = PromptContext {
+            home: "/home/user".to_string(),
+            pwd: "/tmp".to_string(),
+            max_dir_size: None,
+            repo: None,
+            exit_status: 0,
+            duration_ms: 0,
+            job_count: 0,
+            in_tmux: false,
+        };
+
+        let out = render(&mut ctx);
+        assert!(!out.contains('\n'), "non-tmux output should be single line");
     }
 
     #[test]
@@ -152,6 +216,7 @@ mod tests {
             exit_status: 0,
             duration_ms: 0,
             job_count: 0,
+            in_tmux: false,
         };
 
         let out = render(&mut ctx);
