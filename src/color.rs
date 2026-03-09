@@ -26,9 +26,34 @@ pub fn bg(color: u8) -> String {
     format!("\x1b[48;5;{color}m")
 }
 
+/// Wrap ANSI escape sequences in `%{...%}` so zsh can calculate visible prompt width.
+#[must_use]
+pub fn zsh_wrap_escapes(s: &str) -> String {
+    let mut out = String::with_capacity(s.len() + s.len() / 4);
+    let mut parts = s.split('\x1b');
+
+    if let Some(first) = parts.next() {
+        out.push_str(first);
+    }
+
+    for part in parts {
+        if let Some(m_pos) = part.find('m') {
+            out.push_str("%{\x1b");
+            out.push_str(&part[..=m_pos]);
+            out.push_str("%}");
+            out.push_str(&part[m_pos + 1..]);
+        } else {
+            out.push('\x1b');
+            out.push_str(part);
+        }
+    }
+
+    out
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{bg, fg};
+    use super::{bg, fg, zsh_wrap_escapes};
 
     #[test]
     fn fg_produces_ansi_color() {
@@ -41,5 +66,33 @@ mod tests {
     fn bg_produces_ansi_color() {
         assert_eq!(bg(31), "\x1b[48;5;31m");
         assert_eq!(bg(0), "\x1b[48;5;0m");
+    }
+
+    #[test]
+    fn zsh_wrap_no_escapes() {
+        assert_eq!(zsh_wrap_escapes("hello"), "hello");
+    }
+
+    #[test]
+    fn zsh_wrap_single_escape() {
+        let input = format!("{}text", fg(31));
+        let wrapped = zsh_wrap_escapes(&input);
+        assert_eq!(wrapped, "%{\x1b[38;5;31m%}text");
+    }
+
+    #[test]
+    fn zsh_wrap_multiple_escapes() {
+        let input = format!("{}hello{}world", fg(31), bg(236));
+        let wrapped = zsh_wrap_escapes(&input);
+        assert_eq!(wrapped, "%{\x1b[38;5;31m%}hello%{\x1b[48;5;236m%}world");
+    }
+
+    #[test]
+    fn zsh_wrap_preserves_visible_text() {
+        let input = format!("{} $ {}", fg(15), fg(9));
+        let wrapped = zsh_wrap_escapes(&input);
+        assert!(wrapped.contains(" $ "));
+        assert!(wrapped.contains("%{"));
+        assert!(wrapped.contains("%}"));
     }
 }

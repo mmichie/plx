@@ -1,4 +1,4 @@
-use crate::color::{arrow, fg, ARROW};
+use crate::color::{arrow, bg, fg, ARROW};
 
 #[must_use]
 pub fn render_with(exit_status: i32, from_bg: Option<u8>) -> (String, Option<u8>) {
@@ -11,7 +11,7 @@ pub fn render_with(exit_status: i32, from_bg: Option<u8>) -> (String, Option<u8>
         arrow(from_bg, 196),
         fg(15),
         fg(196),
-        crate::color::bg(236),
+        bg(236),
         ARROW,
     );
 

@@ -30,7 +30,7 @@ fn main() {
                 duration_ms,
                 job_count,
             );
-            print!("{}", segments::prompt::render(&mut ctx));
+            print!("{}", color::zsh_wrap_escapes(&segments::prompt::render(&mut ctx)));
         }
         Some("tmux-title") => {
             let home = env::var("HOME").unwrap_or_default();
