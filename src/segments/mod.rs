@@ -1,8 +1,13 @@
+pub mod character;
+pub mod cmd_duration;
 pub mod git;
 pub mod hostname;
+pub mod jobs;
 pub mod nix_shell;
 pub mod path;
 pub mod prompt;
+pub mod reset;
+pub mod status;
 pub mod tmux_title;
 pub mod username;
 pub mod venv;

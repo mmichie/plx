@@ -9,7 +9,7 @@ use crate::color::{arrow, bg, fg, ARROW, BRANCH_ICON, RST};
 pub fn render_with(repo: Option<&mut Repository>, from_bg: Option<u8>) -> (String, Option<u8>) {
     let Some(repo) = repo else {
         // Not in a git repo — just output the closing arrow (dir_end)
-        return (format!("{}{RST}", arrow(from_bg, 236)), Some(236));
+        return (arrow(from_bg, 236), Some(236));
     };
 
     // Get branch name
@@ -152,12 +152,12 @@ pub fn render_with(repo: Option<&mut Repository>, from_bg: Option<u8>) -> (Strin
         }
 
         // Final arrow to terminal bg (236)
-        let _ = write!(out, "{}{}{ARROW}{RST}", fg(prev), bg(236));
+        let _ = write!(out, "{}{}{ARROW}", fg(prev), bg(236));
     } else {
         // Green branch (clean): arrow from path(237) to 148
         let _ = write!(
             out,
-            "{} {}{BRANCH_ICON} {branch} {}{}{ARROW}{RST}",
+            "{} {}{BRANCH_ICON} {branch} {}{}{ARROW}",
             arrow(from_bg, 148),
             fg(0),
             fg(148), bg(236),
@@ -170,7 +170,8 @@ pub fn render_with(repo: Option<&mut Repository>, from_bg: Option<u8>) -> (Strin
 #[must_use]
 pub fn render(discover_from: &std::path::Path) -> String {
     let mut repo = Repository::discover(discover_from).ok();
-    render_with(repo.as_mut(), Some(237)).0
+    let (out, _) = render_with(repo.as_mut(), Some(237));
+    format!("{out}{RST}")
 }
 
 fn ahead_behind(repo: &Repository) -> (u32, u32) {
