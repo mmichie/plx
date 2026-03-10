@@ -32,6 +32,8 @@ struct Palette {
     title_face: Rgba<u8>,
     title_hi: Rgba<u8>,
     title_shadow: Rgba<u8>,
+    bar_warn: Rgba<u8>,
+    bar_crit: Rgba<u8>,
 }
 
 fn rgba(r: u8, g: u8, b: u8) -> Rgba<u8> {
@@ -55,6 +57,8 @@ fn palette_by_name(name: &str) -> Palette {
             title_face: rgba(210, 70, 8),
             title_hi: rgba(255, 230, 120),
             title_shadow: rgba(30, 5, 0),
+            bar_warn: rgba(255, 180, 40),
+            bar_crit: rgba(255, 60, 30),
         },
         "matrix" => Palette {
             bg: rgba(0, 10, 0),
@@ -71,6 +75,8 @@ fn palette_by_name(name: &str) -> Palette {
             title_face: rgba(0, 170, 42),
             title_hi: rgba(180, 255, 200),
             title_shadow: rgba(0, 18, 4),
+            bar_warn: rgba(200, 255, 50),
+            bar_crit: rgba(255, 60, 40),
         },
         "steel" => Palette {
             bg: rgba(15, 18, 22),
@@ -87,6 +93,8 @@ fn palette_by_name(name: &str) -> Palette {
             title_face: rgba(150, 160, 175),
             title_hi: rgba(235, 240, 250),
             title_shadow: rgba(18, 20, 30),
+            bar_warn: rgba(230, 200, 80),
+            bar_crit: rgba(220, 80, 60),
         },
         // "cyber" and default
         _ => Palette {
@@ -104,6 +112,8 @@ fn palette_by_name(name: &str) -> Palette {
             title_face: rgba(130, 60, 210),
             title_hi: rgba(240, 210, 255),
             title_shadow: rgba(18, 5, 40),
+            bar_warn: rgba(255, 200, 60),
+            bar_crit: rgba(255, 50, 50),
         },
     }
 }
@@ -523,8 +533,8 @@ fn draw_system_info(
         ("4RCH1T3CT", info.arch.to_uppercase()),
         ("H0STN4M3 ", info.hostname.to_uppercase()),
         ("D4T3     ", info.date.clone()),
-        ("L04D     ", info.load.clone()),
-        ("M3M0RY   ", info.memory.clone()),
+        ("L04D     ", info.load_string()),
+        ("M3M0RY   ", info.memory_string()),
     ];
     for (i, (label, value)) in info_lines.iter().enumerate() {
         #[allow(clippy::cast_possible_truncation)]
@@ -592,6 +602,380 @@ fn draw_tagline_box(
 }
 
 // ---------------------------------------------------------------------------
+// Dashboard pixel-level rendering (btop-inspired)
+// ---------------------------------------------------------------------------
+
+#[allow(clippy::cast_precision_loss, clippy::many_single_char_names)]
+fn fill_rect_hgradient(
+    img: &mut RgbaImage,
+    x: u32,
+    y: u32,
+    w: u32,
+    h: u32,
+    left: Rgba<u8>,
+    right: Rgba<u8>,
+) {
+    if w == 0 {
+        return;
+    }
+    let x_end = (x + w).min(img.width());
+    let y_end = (y + h).min(img.height());
+    let denom = (w - 1).max(1) as f32;
+    for dx in 0..w {
+        if x + dx >= x_end {
+            break;
+        }
+        let t = dx as f32 / denom;
+        let color = lerp_color(left, right, t);
+        for py in y..y_end {
+            img.put_pixel(x + dx, py, color);
+        }
+    }
+}
+
+fn threshold_color(pct: f32, pal: &Palette) -> Rgba<u8> {
+    if pct > 0.9 {
+        pal.bar_crit
+    } else if pct > 0.7 {
+        pal.bar_warn
+    } else {
+        pal.value_fg
+    }
+}
+
+/// Draw a 3D beveled progress bar at pixel coordinates.
+#[allow(clippy::cast_precision_loss, clippy::cast_possible_truncation, clippy::cast_sign_loss, clippy::too_many_arguments)]
+fn draw_bar_3d(
+    img: &mut RgbaImage,
+    x: u32,
+    y: u32,
+    bar_w: u32,
+    bar_h: u32,
+    pct: f32,
+    color: Rgba<u8>,
+    pal: &Palette,
+) {
+    let pct = pct.clamp(0.0, 1.0);
+    let bevel = 2u32;
+
+    // Dark inset background
+    let inset = scale_color(pal.bg, 1.8);
+    fill_rect(img, x, y, bar_w, bar_h, inset);
+
+    // Dark border around the bar area
+    let border = scale_color(pal.bg, 2.5);
+    fill_rect(img, x, y, bar_w, 1, border);
+    fill_rect(img, x, y + bar_h - 1, bar_w, 1, border);
+    fill_rect(img, x, y, 1, bar_h, border);
+    fill_rect(img, x + bar_w - 1, y, 1, bar_h, border);
+
+    // Filled portion
+    let fill_w = (pct * (bar_w - 2) as f32) as u32;
+    if fill_w > 0 {
+        let brighter = scale_color(color, 1.3);
+        fill_rect_hgradient(img, x + 1, y + 1, fill_w, bar_h - 2, color, brighter);
+
+        // Top bevel (bright)
+        let hi = scale_color(color, 1.5);
+        fill_rect(img, x + 1, y + 1, fill_w, bevel.min(bar_h - 2), hi);
+
+        // Bottom bevel (dark)
+        let lo = scale_color(color, 0.5);
+        let bot_y = y + bar_h - 1 - bevel.min(bar_h - 2);
+        fill_rect(img, x + 1, bot_y, fill_w, bevel.min(bar_h - 2), lo);
+    }
+}
+
+/// Draw a stacked bar with multiple colored segments, 3D bevel treatment.
+#[allow(clippy::cast_precision_loss, clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+fn draw_stacked_bar_3d(
+    img: &mut RgbaImage,
+    x: u32,
+    y: u32,
+    bar_w: u32,
+    bar_h: u32,
+    segments: &[(f32, Rgba<u8>)],
+    pal: &Palette,
+) {
+    let bevel = 2u32;
+    let inner_w = bar_w.saturating_sub(2);
+    let inner_h = bar_h.saturating_sub(2);
+
+    // Dark inset background
+    let inset = scale_color(pal.bg, 1.8);
+    fill_rect(img, x, y, bar_w, bar_h, inset);
+
+    // Dark border
+    let border = scale_color(pal.bg, 2.5);
+    fill_rect(img, x, y, bar_w, 1, border);
+    fill_rect(img, x, y + bar_h - 1, bar_w, 1, border);
+    fill_rect(img, x, y, 1, bar_h, border);
+    fill_rect(img, x + bar_w - 1, y, 1, bar_h, border);
+
+    // Draw each segment
+    let mut cursor = 0u32;
+    for &(pct, color) in segments {
+        let seg_w = (pct.clamp(0.0, 1.0) * inner_w as f32) as u32;
+        if seg_w == 0 {
+            continue;
+        }
+        let sx = x + 1 + cursor;
+        let remaining = inner_w.saturating_sub(cursor);
+        let actual_w = seg_w.min(remaining);
+        if actual_w == 0 {
+            break;
+        }
+
+        let brighter = scale_color(color, 1.2);
+        fill_rect_hgradient(img, sx, y + 1, actual_w, inner_h, color, brighter);
+
+        // Top bevel
+        let hi = scale_color(color, 1.5);
+        fill_rect(img, sx, y + 1, actual_w, bevel.min(inner_h), hi);
+
+        // Bottom bevel
+        let lo = scale_color(color, 0.5);
+        let bot_y = y + 1 + inner_h.saturating_sub(bevel.min(inner_h));
+        fill_rect(img, sx, bot_y, actual_w, bevel.min(inner_h), lo);
+
+        cursor += actual_w;
+    }
+}
+
+/// Draw 3 side-by-side mini vertical bars for load trend.
+#[allow(clippy::cast_precision_loss, clippy::cast_possible_truncation, clippy::cast_sign_loss, clippy::too_many_arguments)]
+fn draw_mini_bars(
+    img: &mut RgbaImage,
+    x: u32,
+    y: u32,
+    values: &[f32; 3],
+    max: f32,
+    bar_w: u32,
+    bar_h: u32,
+    pal: &Palette,
+) {
+    let gap = 2u32;
+    let max = max.max(0.01);
+    let inset = scale_color(pal.bg, 1.8);
+    let border = scale_color(pal.bg, 2.5);
+
+    for (i, &val) in values.iter().enumerate() {
+        #[allow(clippy::cast_possible_truncation)]
+        let bx = x + i as u32 * (bar_w + gap);
+        let pct = (val / max).clamp(0.0, 1.0);
+        let fill_h = (pct * (bar_h - 2) as f32) as u32;
+        let color = threshold_color(pct, pal);
+
+        // Background
+        fill_rect(img, bx, y, bar_w, bar_h, inset);
+        // Border
+        fill_rect(img, bx, y, bar_w, 1, border);
+        fill_rect(img, bx, y + bar_h - 1, bar_w, 1, border);
+        fill_rect(img, bx, y, 1, bar_h, border);
+        fill_rect(img, bx + bar_w - 1, y, 1, bar_h, border);
+
+        // Fill from bottom
+        if fill_h > 0 {
+            let fy = y + 1 + (bar_h - 2 - fill_h);
+            let hi = scale_color(color, 1.4);
+            fill_rect_vgradient(img, bx + 1, fy, bar_w - 2, fill_h, hi, color);
+        }
+    }
+}
+
+/// Draw a text label at pixel coordinates using the CP437 glyph font.
+#[allow(clippy::cast_possible_truncation)]
+fn draw_text_px(
+    img: &mut RgbaImage,
+    x: u32,
+    y: u32,
+    text: &str,
+    fg: Rgba<u8>,
+    bg_color: Rgba<u8>,
+    scale: u32,
+) {
+    let gw = GLYPH_W * scale;
+    for (i, ch) in text.bytes().enumerate() {
+        let cx = x + i as u32 * gw;
+        for py in 0..GLYPH_H {
+            for px in 0..GLYPH_W {
+                let color = if font::glyph_pixel(ch, px, py) { fg } else { bg_color };
+                for sy in 0..scale {
+                    for sx in 0..scale {
+                        let ix = cx + px * scale + sx;
+                        let iy = y + py * scale + sy;
+                        if ix < img.width() && iy < img.height() {
+                            img.put_pixel(ix, iy, color);
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[allow(clippy::cast_precision_loss)]
+fn format_bytes_short(bytes: u64) -> String {
+    let gb = bytes as f64 / 1_073_741_824.0;
+    if gb >= 100.0 {
+        format!("{gb:.0}")
+    } else if gb >= 10.0 {
+        format!("{gb:.1}")
+    } else {
+        format!("{gb:.2}")
+    }
+}
+
+fn format_uptime(secs: u64) -> String {
+    let days = secs / 86400;
+    let hours = (secs % 86400) / 3600;
+    if days > 0 {
+        format!("{days}d {hours}h")
+    } else {
+        let mins = (secs % 3600) / 60;
+        format!("{hours}h {mins}m")
+    }
+}
+
+/// btop-inspired dashboard replacing `draw_system_info` for block3d.
+#[allow(
+    clippy::cast_precision_loss,
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    clippy::too_many_lines
+)]
+fn draw_dashboard(
+    img: &mut RgbaImage,
+    start_row: u32,
+    info: &SystemInfo,
+    pal: &Palette,
+    scale: u32,
+) {
+    let gw = GLYPH_W * scale;
+    let row_h = GLYPH_H * scale;
+    let label_col = 2u32; // character column for labels
+    let bar_x = (label_col + 5) * gw; // pixel x where bars start
+    let bar_w = 44 * gw; // bar width in pixels
+    let bar_h = row_h - 4 * scale; // bar height slightly less than row height
+    let bar_y_off = 2 * scale; // vertical offset within the row
+
+    // Row 0: CPU bar
+    {
+        let row_y = start_row * row_h;
+        draw_text(img, label_col, start_row, "CPU", pal.label_fg, pal.bg, scale);
+
+        let ncores = info.ncores.max(1) as f32;
+        let pct = (info.load_1 as f32 / ncores).clamp(0.0, 1.0);
+        let color = threshold_color(pct, pal);
+        draw_bar_3d(img, bar_x, row_y + bar_y_off, bar_w, bar_h, pct, color, pal);
+
+        // Percentage + load/cores text after bar
+        let text_x = bar_x + bar_w + gw;
+        let pct_text = format!("{:3.0}%  {:.2}/{}", pct * 100.0, info.load_1, info.ncores);
+        draw_text_px(img, text_x, row_y + bar_y_off, &pct_text, pal.value_fg, pal.bg, scale);
+    }
+
+    // Row 1: Memory stacked bar
+    {
+        let row = start_row + 1;
+        let row_y = row * row_h;
+        draw_text(img, label_col, row, "MEM", pal.label_fg, pal.bg, scale);
+
+        let total = info.mem_total.max(1) as f32;
+        let wired_pct = info.mem_wired as f32 / total;
+        let comp_pct = info.mem_compressed as f32 / total;
+        // "other used" = used - wired - compressed
+        let other_used = info.mem_used.saturating_sub(info.mem_wired + info.mem_compressed) as f32 / total;
+
+        // Colors for segments: wired=bright, compressed=medium, other=dim
+        let wired_color = pal.bar_crit;
+        let comp_color = pal.bar_warn;
+        let other_color = pal.value_fg;
+
+        let segments = [
+            (wired_pct, wired_color),
+            (comp_pct, comp_color),
+            (other_used, other_color),
+        ];
+        draw_stacked_bar_3d(img, bar_x, row_y + bar_y_off, bar_w, bar_h, &segments, pal);
+
+        let text_x = bar_x + bar_w + gw;
+        let used_gb = format_bytes_short(info.mem_used);
+        let total_gb = format_bytes_short(info.mem_total);
+        let mem_text = format!("{used_gb}/{total_gb}GB");
+        draw_text_px(img, text_x, row_y + bar_y_off, &mem_text, pal.value_fg, pal.bg, scale);
+    }
+
+    // Row 2: Disk bar
+    {
+        let row = start_row + 2;
+        let row_y = row * row_h;
+        draw_text(img, label_col, row, "DSK", pal.label_fg, pal.bg, scale);
+
+        let total = info.disk_total.max(1) as f32;
+        let pct = (info.disk_used as f32 / total).clamp(0.0, 1.0);
+        let color = threshold_color(pct, pal);
+        draw_bar_3d(img, bar_x, row_y + bar_y_off, bar_w, bar_h, pct, color, pal);
+
+        let text_x = bar_x + bar_w + gw;
+        let used_s = format_bytes_short(info.disk_used);
+        let total_s = format_bytes_short(info.disk_total);
+        let dsk_text = format!("{used_s}/{total_s}GB");
+        draw_text_px(img, text_x, row_y + bar_y_off, &dsk_text, pal.value_fg, pal.bg, scale);
+    }
+
+    // Row 3: Load trend mini-bars + values
+    {
+        let row = start_row + 3;
+        let row_y = row * row_h;
+        draw_text(img, label_col, row, "LOD", pal.label_fg, pal.bg, scale);
+
+        let ncores = info.ncores.max(1) as f32;
+        let values = [
+            info.load_1 as f32,
+            info.load_5 as f32,
+            info.load_15 as f32,
+        ];
+        let mini_w = 8 * scale;
+        let mini_h = bar_h;
+        draw_mini_bars(img, bar_x, row_y + bar_y_off, &values, ncores, mini_w, mini_h, pal);
+
+        // Load values as text after the mini bars
+        let text_x = bar_x + 3 * (mini_w + 2) + gw;
+        let load_text = format!("{:.2}  {:.2}  {:.2}", info.load_1, info.load_5, info.load_15);
+        draw_text_px(img, text_x, row_y + bar_y_off, &load_text, pal.value_fg, pal.bg, scale);
+    }
+
+    // Row 4: Uptime, process count, IP
+    {
+        let row = start_row + 4;
+        let uptime = format_uptime(info.uptime_secs);
+        let ip = if info.ip_addr.is_empty() { "N/A" } else { &info.ip_addr };
+        let line = format!("UPT {uptime}  PRC {}  IP {ip}", info.proc_count);
+        draw_text(img, label_col, row, &line, pal.value_fg, pal.bg, scale);
+    }
+
+    // Row 5: hostname decorative line
+    {
+        let row = start_row + 5;
+        let host_line = format!(
+            "{} {} / {} / {}",
+            DIAMOND as char,
+            info.hostname.to_uppercase(),
+            info.os.to_uppercase(),
+            info.arch.to_uppercase()
+        );
+        let mut line_bytes: Vec<u8> = vec![b' ', b' ', BOX_HZ, b' '];
+        line_bytes.extend_from_slice(host_line.as_bytes());
+        line_bytes.push(b' ');
+        while line_bytes.len() < COLS as usize {
+            line_bytes.push(BOX_HZ);
+        }
+        draw_bytes(img, 0, row, &line_bytes, pal.border_fg, pal.bg, scale);
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Banner layouts
 // ---------------------------------------------------------------------------
 
@@ -642,8 +1026,8 @@ fn draw_block3d(img: &mut RgbaImage, pal: &Palette, scale: u32) {
     let div = make_double_divider(COLS);
     draw_bytes(img, 0, 11, &div, pal.border_fg, pal.bg, scale);
 
-    // Rows 12-17: system info
-    draw_system_info(img, 12, &info, pal, scale);
+    // Rows 12-17: dashboard (btop-inspired)
+    draw_dashboard(img, 12, &info, pal, scale);
 
     // Rows 19-21: tagline box
     draw_tagline_box(img, 19, &info, pal, scale);
