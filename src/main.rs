@@ -1,3 +1,5 @@
+#[cfg(feature = "banner")]
+mod banner;
 mod color;
 mod segments;
 mod shell;
@@ -53,8 +55,14 @@ fn main() {
                 std::process::exit(1);
             }
         }
+        #[cfg(feature = "banner")]
+        Some("banner") => {
+            let scale = args.get(2).and_then(|s| s.parse().ok()).unwrap_or(2u32);
+            let palette = args.get(3).map_or("cyber", String::as_str);
+            banner::generate(scale, palette);
+        }
         _ => {
-            eprintln!("Usage: plx <path|git|nix-shell|prompt|tmux-title|init>");
+            eprintln!("Usage: plx <path|git|nix-shell|prompt|tmux-title|init|banner>");
             std::process::exit(1);
         }
     }

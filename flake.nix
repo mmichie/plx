@@ -28,7 +28,16 @@
           craneLib = crane.mkLib pkgs;
         in
         craneLib.buildPackage {
-          src = craneLib.cleanCargoSource ./.;
+          src =
+            let
+              binFilter = path: _type: builtins.match ".*\\.bin$" path != null;
+            in
+            pkgs.lib.cleanSourceWith {
+              src = ./.;
+              filter =
+                path: type:
+                (binFilter path type) || (craneLib.filterCargoSources path type);
+            };
           strictDeps = true;
           nativeBuildInputs = [
             pkgs.pkg-config
