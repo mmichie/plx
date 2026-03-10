@@ -55,33 +55,30 @@ fn get_date() -> String {
 
 #[cfg(target_os = "macos")]
 fn get_load() -> String {
-    let mut buf = [0u8; 256];
-    let mut len: libc::size_t = buf.len();
+    // Must match C struct loadavg { fixpt_t ldavg[3]; long fscale; }
+    // repr(C) handles the 4-byte padding before the 8-byte-aligned long.
+    #[repr(C)]
+    struct LoadAvg {
+        ldavg: [u32; 3],
+        fscale: libc::c_long,
+    }
+    let mut avg = std::mem::MaybeUninit::<LoadAvg>::uninit();
+    let mut len = std::mem::size_of::<LoadAvg>();
     let name = c"vm.loadavg";
     let ret = unsafe {
         libc::sysctlbyname(
             name.as_ptr(),
-            buf.as_mut_ptr().cast(),
+            avg.as_mut_ptr().cast(),
             &raw mut len,
             std::ptr::null_mut(),
             0,
         )
     };
-    if ret == 0 && len >= 4 {
-        // macOS struct loadavg { u32 ldavg[3]; long fscale; }
-        let scale_offset = 3 * std::mem::size_of::<u32>();
-        if len > scale_offset {
-            let ldavg: [u32; 3] = [
-                u32::from_ne_bytes(buf[0..4].try_into().unwrap_or([0; 4])),
-                u32::from_ne_bytes(buf[4..8].try_into().unwrap_or([0; 4])),
-                u32::from_ne_bytes(buf[8..12].try_into().unwrap_or([0; 4])),
-            ];
-            let fscale_bytes = &buf[scale_offset..scale_offset + std::mem::size_of::<i64>()];
-            #[allow(clippy::cast_precision_loss)]
-            let fscale =
-                i64::from_ne_bytes(fscale_bytes.try_into().unwrap_or([0; 8])).max(1) as f64;
-            return format!("{:.2}", f64::from(ldavg[0]) / fscale);
-        }
+    if ret == 0 {
+        let avg = unsafe { avg.assume_init() };
+        #[allow(clippy::cast_precision_loss)]
+        let fscale = (avg.fscale.max(1)) as f64;
+        return format!("{:.2}", f64::from(avg.ldavg[0]) / fscale);
     }
     "?".to_string()
 }
