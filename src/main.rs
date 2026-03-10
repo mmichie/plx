@@ -59,7 +59,8 @@ fn main() {
         Some("banner") => {
             let scale = args.get(2).and_then(|s| s.parse().ok()).unwrap_or(2u32);
             let palette = args.get(3).map_or("cyber", String::as_str);
-            banner::generate(scale, palette);
+            let banner_type = args.get(4).map(String::as_str);
+            banner::generate(scale, palette, banner_type);
         }
         _ => {
             eprintln!("Usage: plx <path|git|nix-shell|prompt|tmux-title|init|banner>");
