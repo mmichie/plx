@@ -1009,7 +1009,7 @@ fn draw_classic(img: &mut RgbaImage, pal: &Palette, scale: u32) {
     draw_gradient_bar(img, 23, &pal.gradient, true, scale);
 }
 
-fn draw_block3d(img: &mut RgbaImage, pal: &Palette, scale: u32) {
+fn draw_block3d(img: &mut RgbaImage, pal: &Palette, scale: u32, title: Option<&str>) {
     let info = SystemInfo::gather();
 
     // Row 1: gradient bar ░▒▓█
@@ -1019,20 +1019,29 @@ fn draw_block3d(img: &mut RgbaImage, pal: &Palette, scale: u32) {
     let ornament = make_ornament_line(COLS);
     draw_bytes(img, 0, 2, &ornament, pal.border_fg, pal.bg, scale);
 
-    // Rows 3-9: big "INFLUX" 3D block letters (extrusion bleeds below)
-    draw_big_title(img, 3, "INFLUX", pal, scale);
+    let dash_row = if let Some(t) = title {
+        // Rows 3-9: big 3D block letters
+        draw_big_title(img, 3, t, pal, scale);
 
-    // Row 11: double divider ═══◆═══
-    let div = make_double_divider(COLS);
-    draw_bytes(img, 0, 11, &div, pal.border_fg, pal.bg, scale);
+        // Row 11: double divider ═══◆═══
+        let div = make_double_divider(COLS);
+        draw_bytes(img, 0, 11, &div, pal.border_fg, pal.bg, scale);
+        12
+    } else {
+        // No title — divider then dashboard starts higher
+        let div = make_double_divider(COLS);
+        draw_bytes(img, 0, 3, &div, pal.border_fg, pal.bg, scale);
+        4
+    };
 
-    // Rows 12-17: dashboard (btop-inspired)
-    draw_dashboard(img, 12, &info, pal, scale);
+    // Dashboard (btop-inspired)
+    draw_dashboard(img, dash_row, &info, pal, scale);
 
-    // Rows 19-21: tagline box
-    draw_tagline_box(img, 19, &info, pal, scale);
+    // Tagline box
+    let tagline_row = dash_row + 7;
+    draw_tagline_box(img, tagline_row, &info, pal, scale);
 
-    // Row 23: reverse gradient bar █▓▒░
+    // Reverse gradient bar █▓▒░
     draw_gradient_bar(img, 23, &pal.gradient, true, scale);
 }
 
@@ -1041,23 +1050,17 @@ fn draw_block3d(img: &mut RgbaImage, pal: &Palette, scale: u32) {
 // ---------------------------------------------------------------------------
 
 /// Generates the banner PNG and writes it to stdout.
-pub fn generate(scale: u32, palette_name: &str, banner_type: Option<&str>) {
+pub fn generate(scale: u32, palette_name: &str, banner_type: Option<&str>, title: Option<&str>) {
     let pal = palette_by_name(palette_name);
     let width = COLS * GLYPH_W * scale;
     let height = ROWS * GLYPH_H * scale;
     let mut img: RgbaImage = ImageBuffer::from_pixel(width, height, pal.bg);
 
-    let resolved = banner_type.unwrap_or_else(|| {
-        if day_of_year().is_multiple_of(2) {
-            "block3d"
-        } else {
-            "classic"
-        }
-    });
+    let resolved = banner_type.unwrap_or("block3d");
 
     match resolved {
-        "block3d" => draw_block3d(&mut img, &pal, scale),
-        _ => draw_classic(&mut img, &pal, scale),
+        "classic" => draw_classic(&mut img, &pal, scale),
+        _ => draw_block3d(&mut img, &pal, scale, title),
     }
 
     // Encode to PNG and write to stdout
