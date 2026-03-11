@@ -13,7 +13,9 @@ pub struct SystemInfo {
     // Memory (bytes)
     pub mem_total: u64,
     pub mem_used: u64,
+    #[allow(dead_code)]
     pub mem_wired: u64,
+    #[allow(dead_code)]
     pub mem_compressed: u64,
     // Disk (bytes)
     pub disk_total: u64,

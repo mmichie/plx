@@ -255,6 +255,39 @@ fn scale_color(c: Rgba<u8>, factor: f32) -> Rgba<u8> {
     ])
 }
 
+fn smoothstep(edge0: f32, edge1: f32, x: f32) -> f32 {
+    let d = edge1 - edge0;
+    if d.abs() < 1e-6 {
+        return if x >= edge0 { 1.0 } else { 0.0 };
+    }
+    let t = ((x - edge0) / d).clamp(0.0, 1.0);
+    t * t * (3.0 - 2.0 * t)
+}
+
+#[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+fn blend_pixel(img: &mut RgbaImage, x: u32, y: u32, color: Rgba<u8>, alpha: f32) {
+    if x >= img.width() || y >= img.height() || alpha <= 0.0 {
+        return;
+    }
+    let bg = *img.get_pixel(x, y);
+    let a = alpha.clamp(0.0, 1.0);
+    let mix = |fg: u8, bg: u8| -> u8 {
+        f32::from(fg)
+            .mul_add(a, f32::from(bg) * (1.0 - a))
+            .clamp(0.0, 255.0) as u8
+    };
+    img.put_pixel(
+        x,
+        y,
+        Rgba([
+            mix(color.0[0], bg.0[0]),
+            mix(color.0[1], bg.0[1]),
+            mix(color.0[2], bg.0[2]),
+            255,
+        ]),
+    );
+}
+
 #[allow(clippy::cast_precision_loss, clippy::many_single_char_names)]
 fn fill_rect_vgradient(
     img: &mut RgbaImage,
@@ -605,7 +638,7 @@ fn draw_tagline_box(
 // Dashboard pixel-level rendering (btop-inspired)
 // ---------------------------------------------------------------------------
 
-#[allow(clippy::cast_precision_loss, clippy::many_single_char_names)]
+#[allow(dead_code, clippy::cast_precision_loss, clippy::many_single_char_names)]
 fn fill_rect_hgradient(
     img: &mut RgbaImage,
     x: u32,
@@ -644,7 +677,7 @@ fn threshold_color(pct: f32, pal: &Palette) -> Rgba<u8> {
 }
 
 /// Draw a 3D beveled progress bar at pixel coordinates.
-#[allow(clippy::cast_precision_loss, clippy::cast_possible_truncation, clippy::cast_sign_loss, clippy::too_many_arguments)]
+#[allow(dead_code, clippy::cast_precision_loss, clippy::cast_possible_truncation, clippy::cast_sign_loss, clippy::too_many_arguments)]
 fn draw_bar_3d(
     img: &mut RgbaImage,
     x: u32,
@@ -687,7 +720,7 @@ fn draw_bar_3d(
 }
 
 /// Draw a stacked bar with multiple colored segments, 3D bevel treatment.
-#[allow(clippy::cast_precision_loss, clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+#[allow(dead_code, clippy::cast_precision_loss, clippy::cast_possible_truncation, clippy::cast_sign_loss)]
 fn draw_stacked_bar_3d(
     img: &mut RgbaImage,
     x: u32,
@@ -814,7 +847,37 @@ fn draw_text_px(
     }
 }
 
-#[allow(clippy::cast_precision_loss)]
+#[allow(clippy::cast_possible_truncation)]
+fn draw_text_px_transparent(
+    img: &mut RgbaImage,
+    x: u32,
+    y: u32,
+    text: &str,
+    fg: Rgba<u8>,
+    scale: u32,
+) {
+    let gw = GLYPH_W * scale;
+    for (i, ch) in text.bytes().enumerate() {
+        let cx = x + i as u32 * gw;
+        for py in 0..GLYPH_H {
+            for px in 0..GLYPH_W {
+                if font::glyph_pixel(ch, px, py) {
+                    for sy in 0..scale {
+                        for sx in 0..scale {
+                            let ix = cx + px * scale + sx;
+                            let iy = y + py * scale + sy;
+                            if ix < img.width() && iy < img.height() {
+                                img.put_pixel(ix, iy, fg);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[allow(dead_code, clippy::cast_precision_loss)]
 fn format_bytes_short(bytes: u64) -> String {
     let gb = bytes as f64 / 1_073_741_824.0;
     if gb >= 100.0 {
@@ -837,6 +900,198 @@ fn format_uptime(secs: u64) -> String {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Radial arc gauge rendering
+// ---------------------------------------------------------------------------
+
+/// Draw an anti-aliased thick arc with optional 3D bevel effect.
+///
+/// Arc is a bottom semicircle (∪ cup shape, like a speedometer).
+/// Covers angles in `[angle_from, angle_to]` where angles are measured
+/// with `atan2(dy, dx)` — positive angles map to pixels below `cy`.
+/// `angle_from=0, angle_to=π` gives a full bottom semicircle.
+#[allow(
+    clippy::cast_precision_loss,
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    clippy::too_many_arguments
+)]
+fn draw_arc(
+    img: &mut RgbaImage,
+    cx: f32,
+    cy: f32,
+    r_outer: f32,
+    r_inner: f32,
+    angle_from: f32,
+    angle_to: f32,
+    color: Rgba<u8>,
+    bevel: bool,
+) {
+    let x_min = (cx - r_outer - 1.0).max(0.0) as u32;
+    let x_max = ((cx + r_outer + 1.0) as u32).min(img.width().saturating_sub(1));
+    // Only need tiny region above cy (AA), arc extends below
+    let y_min = (cy - 1.5).max(0.0) as u32;
+    let y_max = ((cy + r_outer + 1.0) as u32).min(img.height().saturating_sub(1));
+    let half_px = (1.0 / r_outer).max(0.01);
+
+    for py in y_min..=y_max {
+        for px in x_min..=x_max {
+            let dx = px as f32 - cx;
+            let dy = py as f32 - cy;
+            let dist = dx.hypot(dy);
+
+            if dist > r_outer + 1.0 || dist < r_inner - 1.0 {
+                continue;
+            }
+
+            // atan2(dy, dx): positive angles = below cy = ∪ cup shape
+            let angle = dy.atan2(dx);
+
+            // Radial coverage (smooth at inner/outer edges)
+            let radial = smoothstep(r_outer + 0.5, r_outer - 0.5, dist)
+                * smoothstep(r_inner - 0.5, r_inner + 0.5, dist);
+
+            // Angular coverage: inside [angle_from, angle_to]
+            let angular = smoothstep(angle_from - half_px, angle_from + half_px, angle)
+                * smoothstep(angle_to + half_px, angle_to - half_px, angle);
+
+            let coverage = radial * angular;
+            if coverage > 0.001 {
+                let final_color = if bevel && r_outer > r_inner {
+                    let radial_t =
+                        ((dist - r_inner) / (r_outer - r_inner)).clamp(0.0, 1.0);
+                    let bevel_factor = radial_t.mul_add(0.7, 0.6);
+                    scale_color(color, bevel_factor)
+                } else {
+                    color
+                };
+                blend_pixel(img, px, py, final_color, coverage);
+            }
+        }
+    }
+}
+
+/// Draw a complete radial arc gauge (∪ cup/speedometer shape):
+/// background track, colored fill, value text inside, label below.
+#[allow(
+    clippy::cast_precision_loss,
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    clippy::too_many_arguments
+)]
+fn draw_arc_gauge(
+    img: &mut RgbaImage,
+    cx: f32,
+    cy: f32,
+    r_outer: f32,
+    r_inner: f32,
+    pct: f32,
+    pal: &Palette,
+    label: &str,
+    scale: u32,
+) {
+    let pi = std::f32::consts::PI;
+
+    // Dark inset background track (full bottom semicircle: 0 to π)
+    let bg_inset = scale_color(pal.bg, 3.5);
+    draw_arc(img, cx, cy, r_outer, r_inner, 0.0, pi, bg_inset, false);
+
+    // Filled arc: sweeps from left (π) toward right (0) based on pct.
+    // In our coordinate system (atan2(dy,dx)), left=π, right=0.
+    // Fill starts at π and sweeps down to π*(1-pct).
+    if pct > 0.005 {
+        let fill_start = pi * (1.0 - pct);
+        let fill_color = threshold_color(pct, pal);
+        draw_arc(
+            img,
+            cx,
+            cy,
+            r_outer - 1.0,
+            r_inner + 1.0,
+            fill_start,
+            pi,
+            fill_color,
+            true,
+        );
+    }
+
+    // Value text centered inside the cup
+    let gw = GLYPH_W * scale;
+    let gh = GLYPH_H * scale;
+
+    let pct_text = format!("{:.0}%", pct * 100.0);
+    let text_w = pct_text.len() as u32 * gw;
+    let text_x = (cx as u32).saturating_sub(text_w / 2);
+    // Place text fully inside the inner cup: top at ~cy+scale, bottom well above r_inner
+    let text_y = (cy + r_inner * 0.15) as u32;
+    draw_text_px_transparent(img, text_x, text_y, &pct_text, pal.value_fg, scale);
+
+    // Label below the arc bottom
+    let label_w = label.len() as u32 * gw;
+    let label_x = (cx as u32).saturating_sub(label_w / 2);
+    let label_y = (cy + r_outer) as u32 + scale;
+    draw_text_px_transparent(img, label_x, label_y, label, pal.label_fg, scale);
+    let _ = gh;
+}
+
+/// Render 3 radial arc gauges side by side for CPU, MEM, DSK.
+#[allow(
+    clippy::cast_precision_loss,
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss
+)]
+fn draw_gauge_panel(
+    img: &mut RgbaImage,
+    start_row: u32,
+    info: &SystemInfo,
+    pal: &Palette,
+    scale: u32,
+) {
+    let row_h = GLYPH_H * scale;
+    let gh = GLYPH_H * scale;
+    let img_w = COLS * GLYPH_W * scale;
+
+    // 4 text rows of gauge area = 128px at scale 2
+    // Arc hangs down from cy; need room for arc + label text below
+    let r_outer = (row_h * 2) as f32; // 64px at scale 2
+    let r_inner = r_outer - (10 * scale) as f32; // 44px, 20px thick arc
+
+    // cy at the top of the gauge area (arc hangs below)
+    let area_top = (start_row * row_h) as f32;
+    let cy = area_top + (2 * scale) as f32;
+
+    // Three evenly spaced gauge centers
+    let spacing = img_w as f32 / 3.0;
+    let centers = [spacing * 0.5, spacing * 1.5, spacing * 2.5];
+    let _ = gh; // suppress unused warning
+
+    // CPU: load_1 / ncores
+    let cpu_pct = (info.load_1 as f32 / info.ncores.max(1) as f32).clamp(0.0, 1.0);
+    draw_arc_gauge(
+        img, centers[0], cy, r_outer, r_inner, cpu_pct, pal, "CPU", scale,
+    );
+
+    // MEM: used / total
+    let mem_pct = if info.mem_total > 0 {
+        (info.mem_used as f32 / info.mem_total as f32).clamp(0.0, 1.0)
+    } else {
+        0.0
+    };
+    draw_arc_gauge(
+        img, centers[1], cy, r_outer, r_inner, mem_pct, pal, "MEM", scale,
+    );
+
+    // DSK: used / total
+    let dsk_pct = if info.disk_total > 0 {
+        (info.disk_used as f32 / info.disk_total as f32).clamp(0.0, 1.0)
+    } else {
+        0.0
+    };
+    draw_arc_gauge(
+        img, centers[2], cy, r_outer, r_inner, dsk_pct, pal, "DSK", scale,
+    );
+}
+
 /// btop-inspired dashboard replacing `draw_system_info` for block3d.
 #[allow(
     clippy::cast_precision_loss,
@@ -853,80 +1108,17 @@ fn draw_dashboard(
 ) {
     let gw = GLYPH_W * scale;
     let row_h = GLYPH_H * scale;
-    let label_col = 2u32; // character column for labels
-    let bar_x = (label_col + 5) * gw; // pixel x where bars start
-    let bar_w = 44 * gw; // bar width in pixels
-    let bar_h = row_h - 4 * scale; // bar height slightly less than row height
-    let bar_y_off = 2 * scale; // vertical offset within the row
+    let label_col = 2u32;
+    let bar_x = (label_col + 5) * gw;
+    let bar_h = row_h - 4 * scale;
+    let bar_y_off = 2 * scale;
 
-    // Row 0: CPU bar
+    // Rows 0-3: Radial arc gauges (CPU, MEM, DSK)
+    draw_gauge_panel(img, start_row, info, pal, scale);
+
+    // Row 4: Load trend mini-bars + values
     {
-        let row_y = start_row * row_h;
-        draw_text(img, label_col, start_row, "CPU", pal.label_fg, pal.bg, scale);
-
-        let ncores = info.ncores.max(1) as f32;
-        let pct = (info.load_1 as f32 / ncores).clamp(0.0, 1.0);
-        let color = threshold_color(pct, pal);
-        draw_bar_3d(img, bar_x, row_y + bar_y_off, bar_w, bar_h, pct, color, pal);
-
-        // Percentage + load/cores text after bar
-        let text_x = bar_x + bar_w + gw;
-        let pct_text = format!("{:3.0}%  {:.2}/{}", pct * 100.0, info.load_1, info.ncores);
-        draw_text_px(img, text_x, row_y + bar_y_off, &pct_text, pal.value_fg, pal.bg, scale);
-    }
-
-    // Row 1: Memory stacked bar
-    {
-        let row = start_row + 1;
-        let row_y = row * row_h;
-        draw_text(img, label_col, row, "MEM", pal.label_fg, pal.bg, scale);
-
-        let total = info.mem_total.max(1) as f32;
-        let wired_pct = info.mem_wired as f32 / total;
-        let comp_pct = info.mem_compressed as f32 / total;
-        // "other used" = used - wired - compressed
-        let other_used = info.mem_used.saturating_sub(info.mem_wired + info.mem_compressed) as f32 / total;
-
-        // Colors for segments: wired=bright, compressed=medium, other=dim
-        let wired_color = pal.bar_crit;
-        let comp_color = pal.bar_warn;
-        let other_color = pal.value_fg;
-
-        let segments = [
-            (wired_pct, wired_color),
-            (comp_pct, comp_color),
-            (other_used, other_color),
-        ];
-        draw_stacked_bar_3d(img, bar_x, row_y + bar_y_off, bar_w, bar_h, &segments, pal);
-
-        let text_x = bar_x + bar_w + gw;
-        let used_gb = format_bytes_short(info.mem_used);
-        let total_gb = format_bytes_short(info.mem_total);
-        let mem_text = format!("{used_gb}/{total_gb}GB");
-        draw_text_px(img, text_x, row_y + bar_y_off, &mem_text, pal.value_fg, pal.bg, scale);
-    }
-
-    // Row 2: Disk bar
-    {
-        let row = start_row + 2;
-        let row_y = row * row_h;
-        draw_text(img, label_col, row, "DSK", pal.label_fg, pal.bg, scale);
-
-        let total = info.disk_total.max(1) as f32;
-        let pct = (info.disk_used as f32 / total).clamp(0.0, 1.0);
-        let color = threshold_color(pct, pal);
-        draw_bar_3d(img, bar_x, row_y + bar_y_off, bar_w, bar_h, pct, color, pal);
-
-        let text_x = bar_x + bar_w + gw;
-        let used_s = format_bytes_short(info.disk_used);
-        let total_s = format_bytes_short(info.disk_total);
-        let dsk_text = format!("{used_s}/{total_s}GB");
-        draw_text_px(img, text_x, row_y + bar_y_off, &dsk_text, pal.value_fg, pal.bg, scale);
-    }
-
-    // Row 3: Load trend mini-bars + values
-    {
-        let row = start_row + 3;
+        let row = start_row + 4;
         let row_y = row * row_h;
         draw_text(img, label_col, row, "LOD", pal.label_fg, pal.bg, scale);
 
@@ -946,18 +1138,18 @@ fn draw_dashboard(
         draw_text_px(img, text_x, row_y + bar_y_off, &load_text, pal.value_fg, pal.bg, scale);
     }
 
-    // Row 4: Uptime, process count, IP
+    // Row 5: Uptime, process count, IP
     {
-        let row = start_row + 4;
+        let row = start_row + 5;
         let uptime = format_uptime(info.uptime_secs);
         let ip = if info.ip_addr.is_empty() { "N/A" } else { &info.ip_addr };
         let line = format!("UPT {uptime}  PRC {}  IP {ip}", info.proc_count);
         draw_text(img, label_col, row, &line, pal.value_fg, pal.bg, scale);
     }
 
-    // Row 5: hostname decorative line
+    // Row 6: hostname decorative line
     {
-        let row = start_row + 5;
+        let row = start_row + 6;
         let host_line = format!(
             "{} {} / {} / {}",
             DIAMOND as char,
