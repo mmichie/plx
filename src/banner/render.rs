@@ -1087,9 +1087,7 @@ fn base64_encode(data: &[u8]) -> String {
 // ---------------------------------------------------------------------------
 
 /// Write PNG data as Kitty graphics protocol escape sequences.
-/// When running inside tmux, wraps each chunk in a DCS passthrough
-/// (`ESC Ptmux;` ... `ESC \`) with inner ESCs doubled.
-fn write_kitty_graphics(png_data: &[u8], out: &mut impl Write, in_tmux: bool) {
+fn write_kitty_graphics(png_data: &[u8], out: &mut impl Write) {
     const CHUNK_SIZE: usize = 4096;
 
     let encoded = base64_encode(png_data);
@@ -1097,39 +1095,38 @@ fn write_kitty_graphics(png_data: &[u8], out: &mut impl Write, in_tmux: bool) {
     let chunks: Vec<&[u8]> = bytes.chunks(CHUNK_SIZE).collect();
     let last = chunks.len().saturating_sub(1);
 
-    // Inside tmux passthrough, ESC must be doubled: \x1b → \x1b\x1b
-    let esc: &[u8] = if in_tmux { b"\x1b\x1b" } else { b"\x1b" };
-
     for (i, chunk) in chunks.iter().enumerate() {
         let m = u8::from(i < last);
-
-        // Open tmux passthrough envelope
-        if in_tmux {
-            out.write_all(b"\x1bPtmux;").expect("write failed");
-        }
-
-        // Kitty graphics header (with doubled ESC if in tmux)
-        out.write_all(esc).expect("write failed");
         if i == 0 {
-            write!(out, "_Gf=100,a=T,q=2,m={m};").expect("write failed");
+            write!(out, "\x1b_Gf=100,a=T,q=2,m={m};").expect("write failed");
         } else {
-            write!(out, "_Gm={m};").expect("write failed");
+            write!(out, "\x1b_Gm={m};").expect("write failed");
         }
-
-        // Base64 payload (no ESC chars, safe as-is)
         out.write_all(chunk).expect("write failed");
-
-        // Kitty ST (string terminator)
-        out.write_all(esc).expect("write failed");
-        out.write_all(b"\\").expect("write failed");
-
-        // Close tmux passthrough envelope
-        if in_tmux {
-            out.write_all(b"\x1b\\").expect("write failed");
-        }
+        out.write_all(b"\x1b\\").expect("write failed");
     }
     // Newline after image so the shell prompt starts on a fresh line
     out.write_all(b"\n").expect("write failed");
+}
+
+/// Pipe PNG through chafa for tmux or terminals without Kitty support.
+fn write_via_chafa(png_data: &[u8]) {
+    use std::process::{Command, Stdio};
+
+    let Ok(mut child) = Command::new("chafa")
+        .args(["--size=80x25", "-"])
+        .stdin(Stdio::piped())
+        .spawn()
+    else {
+        // chafa not available, write raw PNG as last resort
+        let mut out = io::stdout().lock();
+        out.write_all(png_data).ok();
+        return;
+    };
+    if let Some(mut stdin) = child.stdin.take() {
+        stdin.write_all(png_data).ok();
+    }
+    child.wait().ok();
 }
 
 // ---------------------------------------------------------------------------
@@ -1139,8 +1136,9 @@ fn write_kitty_graphics(png_data: &[u8], out: &mut impl Write, in_tmux: bool) {
 /// Generates the banner and writes it to stdout.
 ///
 /// Output modes:
-/// - Default: Kitty graphics protocol (with tmux passthrough if `$TMUX` is set)
-/// - `png` / `classic-png`: raw PNG bytes (for piping to files)
+/// - Direct terminal: Kitty graphics protocol (pixel-perfect)
+/// - Inside tmux: pipes through chafa (tmux can't manage Kitty graphics layer)
+/// - `png` / `classic-png`: raw PNG bytes (for saving to files)
 pub fn generate(scale: u32, palette_name: &str, banner_type: Option<&str>, title: Option<&str>) {
     let pal = palette_by_name(palette_name);
     let width = COLS * GLYPH_W * scale;
@@ -1174,12 +1172,18 @@ pub fn generate(scale: u32, palette_name: &str, banner_type: Option<&str>, title
         .write_image(cropped.as_raw(), width, height, image::ExtendedColorType::Rgba8)
         .expect("failed to encode PNG");
 
-    let mut out = io::BufWriter::new(io::stdout().lock());
     if raw_png {
+        let mut out = io::BufWriter::new(io::stdout().lock());
         out.write_all(&png_buf).expect("failed to write PNG");
+        out.flush().expect("failed to flush stdout");
     } else {
         let in_tmux = std::env::var_os("TMUX").is_some_and(|v| !v.is_empty());
-        write_kitty_graphics(&png_buf, &mut out, in_tmux);
+        if in_tmux {
+            write_via_chafa(&png_buf);
+        } else {
+            let mut out = io::BufWriter::new(io::stdout().lock());
+            write_kitty_graphics(&png_buf, &mut out);
+            out.flush().expect("failed to flush stdout");
+        }
     }
-    out.flush().expect("failed to flush stdout");
 }
