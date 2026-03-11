@@ -1053,11 +1053,79 @@ fn draw_block3d(img: &mut RgbaImage, pal: &Palette, scale: u32, title: Option<&s
 // Public entry point
 // ---------------------------------------------------------------------------
 
-/// Generates the banner PNG and writes it to stdout.
+// ---------------------------------------------------------------------------
+// Base64 encoder (no external dep)
+// ---------------------------------------------------------------------------
+
+const B64_CHARS: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
+fn base64_encode(data: &[u8]) -> String {
+    let mut out = String::with_capacity(data.len().div_ceil(3) * 4);
+    for chunk in data.chunks(3) {
+        let b0 = chunk[0];
+        let b1 = chunk.get(1).copied().unwrap_or(0);
+        let b2 = chunk.get(2).copied().unwrap_or(0);
+        let n = u32::from(b0) << 16 | u32::from(b1) << 8 | u32::from(b2);
+        out.push(B64_CHARS[(n >> 18 & 0x3F) as usize] as char);
+        out.push(B64_CHARS[(n >> 12 & 0x3F) as usize] as char);
+        if chunk.len() > 1 {
+            out.push(B64_CHARS[(n >> 6 & 0x3F) as usize] as char);
+        } else {
+            out.push('=');
+        }
+        if chunk.len() > 2 {
+            out.push(B64_CHARS[(n & 0x3F) as usize] as char);
+        } else {
+            out.push('=');
+        }
+    }
+    out
+}
+
+// ---------------------------------------------------------------------------
+// Kitty graphics protocol output
+// ---------------------------------------------------------------------------
+
+/// Write PNG data as Kitty graphics protocol escape sequences.
+fn write_kitty_graphics(png_data: &[u8], out: &mut impl Write) {
+    const CHUNK_SIZE: usize = 4096;
+
+    let encoded = base64_encode(png_data);
+    let bytes = encoded.as_bytes();
+    let chunks: Vec<&[u8]> = bytes.chunks(CHUNK_SIZE).collect();
+    let last = chunks.len().saturating_sub(1);
+
+    for (i, chunk) in chunks.iter().enumerate() {
+        let m = u8::from(i < last);
+        if i == 0 {
+            write!(out, "\x1b_Gf=100,a=T,m={m};").expect("write failed");
+        } else {
+            write!(out, "\x1b_Gm={m};").expect("write failed");
+        }
+        out.write_all(chunk).expect("write failed");
+        out.write_all(b"\x1b\\").expect("write failed");
+    }
+    // Newline after image so the shell prompt starts on a fresh line
+    out.write_all(b"\n").expect("write failed");
+}
+
+// ---------------------------------------------------------------------------
+// Public entry point
+// ---------------------------------------------------------------------------
+
+/// Generates the banner and writes it to stdout.
+/// Default output is Kitty graphics protocol; pass `--png` as `banner_type` for raw PNG.
 pub fn generate(scale: u32, palette_name: &str, banner_type: Option<&str>, title: Option<&str>) {
     let pal = palette_by_name(palette_name);
     let width = COLS * GLYPH_W * scale;
-    let resolved = banner_type.unwrap_or("block3d");
+
+    // Check for --png flag in banner_type or a separate "png" type
+    let (resolved, raw_png) = match banner_type {
+        Some("png") => ("block3d", true),
+        Some("classic-png") => ("classic", true),
+        Some(other) => (other, false),
+        None => ("block3d", false),
+    };
 
     // Allocate full canvas, render, then crop to actual content height.
     let max_height = ROWS * GLYPH_H * scale;
@@ -1074,11 +1142,18 @@ pub fn generate(scale: u32, palette_name: &str, banner_type: Option<&str>, title
     let height = (rows_used * GLYPH_H * scale).min(max_height);
     let cropped = image::imageops::crop_imm(&img, 0, 0, width, height).to_image();
 
-    // Encode to PNG and write to stdout
-    let mut buf = io::BufWriter::new(io::stdout().lock());
-    let encoder = image::codecs::png::PngEncoder::new(&mut buf);
+    // Encode to PNG in memory
+    let mut png_buf: Vec<u8> = Vec::new();
+    let encoder = image::codecs::png::PngEncoder::new(&mut png_buf);
     encoder
         .write_image(cropped.as_raw(), width, height, image::ExtendedColorType::Rgba8)
-        .expect("failed to write PNG");
-    buf.flush().expect("failed to flush stdout");
+        .expect("failed to encode PNG");
+
+    let mut out = io::BufWriter::new(io::stdout().lock());
+    if raw_png {
+        out.write_all(&png_buf).expect("failed to write PNG");
+    } else {
+        write_kitty_graphics(&png_buf, &mut out);
+    }
+    out.flush().expect("failed to flush stdout");
 }
