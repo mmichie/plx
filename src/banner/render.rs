@@ -1111,7 +1111,7 @@ fn write_kitty_graphics(png_data: &[u8], out: &mut impl Write, in_tmux: bool) {
         // Kitty graphics header (with doubled ESC if in tmux)
         out.write_all(esc).expect("write failed");
         if i == 0 {
-            write!(out, "_Gf=100,a=T,m={m};").expect("write failed");
+            write!(out, "_Gf=100,a=T,q=2,m={m};").expect("write failed");
         } else {
             write!(out, "_Gm={m};").expect("write failed");
         }
