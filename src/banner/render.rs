@@ -1009,7 +1009,8 @@ fn draw_classic(img: &mut RgbaImage, pal: &Palette, scale: u32) {
     draw_gradient_bar(img, 23, &pal.gradient, true, scale);
 }
 
-fn draw_block3d(img: &mut RgbaImage, pal: &Palette, scale: u32, title: Option<&str>) {
+/// Returns the total number of rows used.
+fn draw_block3d(img: &mut RgbaImage, pal: &Palette, scale: u32, title: Option<&str>) -> u32 {
     let info = SystemInfo::gather();
 
     // Row 1: gradient bar ░▒▓█
@@ -1041,8 +1042,11 @@ fn draw_block3d(img: &mut RgbaImage, pal: &Palette, scale: u32, title: Option<&s
     let tagline_row = dash_row + 7;
     draw_tagline_box(img, tagline_row, &info, pal, scale);
 
-    // Reverse gradient bar █▓▒░
-    draw_gradient_bar(img, 23, &pal.gradient, true, scale);
+    // Reverse gradient bar right after content
+    let bottom_row = tagline_row + 4;
+    draw_gradient_bar(img, bottom_row, &pal.gradient, true, scale);
+
+    bottom_row + 2 // total rows used (bar + 1 row padding)
 }
 
 // ---------------------------------------------------------------------------
@@ -1053,21 +1057,28 @@ fn draw_block3d(img: &mut RgbaImage, pal: &Palette, scale: u32, title: Option<&s
 pub fn generate(scale: u32, palette_name: &str, banner_type: Option<&str>, title: Option<&str>) {
     let pal = palette_by_name(palette_name);
     let width = COLS * GLYPH_W * scale;
-    let height = ROWS * GLYPH_H * scale;
-    let mut img: RgbaImage = ImageBuffer::from_pixel(width, height, pal.bg);
-
     let resolved = banner_type.unwrap_or("block3d");
 
-    match resolved {
-        "classic" => draw_classic(&mut img, &pal, scale),
+    // Allocate full canvas, render, then crop to actual content height.
+    let max_height = ROWS * GLYPH_H * scale;
+    let mut img: RgbaImage = ImageBuffer::from_pixel(width, max_height, pal.bg);
+
+    let rows_used = match resolved {
+        "classic" => {
+            draw_classic(&mut img, &pal, scale);
+            ROWS
+        }
         _ => draw_block3d(&mut img, &pal, scale, title),
-    }
+    };
+
+    let height = (rows_used * GLYPH_H * scale).min(max_height);
+    let cropped = image::imageops::crop_imm(&img, 0, 0, width, height).to_image();
 
     // Encode to PNG and write to stdout
     let mut buf = io::BufWriter::new(io::stdout().lock());
     let encoder = image::codecs::png::PngEncoder::new(&mut buf);
     encoder
-        .write_image(img.as_raw(), width, height, image::ExtendedColorType::Rgba8)
+        .write_image(cropped.as_raw(), width, height, image::ExtendedColorType::Rgba8)
         .expect("failed to write PNG");
     buf.flush().expect("failed to flush stdout");
 }
