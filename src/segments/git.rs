@@ -104,8 +104,8 @@ pub fn render_with(
         _ => None,
     };
 
-    // Determine if dirty
-    let dirty = staged + modified + untracked + conflicted + stashed + ahead + behind > 0
+    // Determine if dirty — stashes are shown as an indicator but don't flip the bar pink
+    let dirty = staged + modified + untracked + conflicted + ahead + behind > 0
         || state.is_some();
 
     let repo_name = repo
@@ -180,13 +180,25 @@ pub fn render_with(
         let _ = write!(out, "{}{}{ARROW}", fg(prev), bg(236));
     } else {
         // Green branch (clean): arrow from path(237) to 148
-        let _ = write!(
-            out,
-            "{} {}{BRANCH_ICON} {branch} {}{}{ARROW}",
-            arrow(from_bg, 148),
-            fg(0),
-            fg(148), bg(236),
-        );
+        if stashed > 0 {
+            let _ = write!(
+                out,
+                "{} {}{BRANCH_ICON} {branch} {}{}{ARROW} {}{stashed}⚑ {}{}{ARROW}",
+                arrow(from_bg, 148),
+                fg(0),
+                fg(148), bg(20),
+                fg(15),
+                fg(20), bg(236),
+            );
+        } else {
+            let _ = write!(
+                out,
+                "{} {}{BRANCH_ICON} {branch} {}{}{ARROW}",
+                arrow(from_bg, 148),
+                fg(0),
+                fg(148), bg(236),
+            );
+        }
     }
 
     (out, Some(236), Some(git_info))
@@ -346,6 +358,37 @@ mod tests {
 
         let out = render(tmp.path());
         assert!(out.contains('+'), "expected + for untracked in: {out}");
+    }
+
+    #[test]
+    fn clean_repo_with_stash_is_green_with_stash_indicator() {
+        let tmp = TempDir::new().unwrap();
+        let mut repo = init_repo(tmp.path());
+
+        // Commit a file so we have something to stash
+        let file_path = tmp.path().join("file.txt");
+        fs::write(&file_path, "hello").unwrap();
+        let sig = {
+            let mut index = repo.index().unwrap();
+            index.add_path(std::path::Path::new("file.txt")).unwrap();
+            index.write().unwrap();
+            let tree_id = index.write_tree().unwrap();
+            let tree = repo.find_tree(tree_id).unwrap();
+            let head = repo.head().unwrap().peel_to_commit().unwrap();
+            let sig = repo.signature().unwrap();
+            repo.commit(Some("HEAD"), &sig, &sig, "add file", &tree, &[&head])
+                .unwrap();
+            sig
+        };
+
+        // Modify and stash — working tree is clean after this
+        fs::write(&file_path, "modified").unwrap();
+        repo.stash_save(&sig, "wip", None).unwrap();
+
+        let out = render(tmp.path());
+        assert!(out.contains(&bg(148)), "expected green bg(148) in: {out}");
+        assert!(out.contains('⚑'), "expected stash icon in: {out}");
+        assert!(!out.contains(&bg(161)), "should not be pink: {out}");
     }
 
     #[test]
