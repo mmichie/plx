@@ -432,26 +432,26 @@ fn get_uptime_secs() -> u64 {
         })
         .map_or(0, |v| {
             #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
-            { v as u64 }
+            {
+                v as u64
+            }
         })
 }
 
 #[cfg(target_os = "linux")]
 fn get_proc_count() -> u32 {
-    std::fs::read_dir("/proc")
-        .ok()
-        .map_or(0, |entries| {
-            #[allow(clippy::cast_possible_truncation)]
-            let n = entries
-                .filter_map(Result::ok)
-                .filter(|e| {
-                    e.file_name()
-                        .to_str()
-                        .is_some_and(|s| s.chars().all(|c| c.is_ascii_digit()))
-                })
-                .count() as u32;
-            n
-        })
+    std::fs::read_dir("/proc").ok().map_or(0, |entries| {
+        #[allow(clippy::cast_possible_truncation)]
+        let n = entries
+            .filter_map(Result::ok)
+            .filter(|e| {
+                e.file_name()
+                    .to_str()
+                    .is_some_and(|s| s.chars().all(|c| c.is_ascii_digit()))
+            })
+            .count() as u32;
+        n
+    })
 }
 
 #[cfg(target_os = "linux")]
