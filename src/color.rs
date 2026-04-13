@@ -53,7 +53,7 @@ pub fn zsh_wrap_escapes(s: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{bg, fg, zsh_wrap_escapes};
+    use super::{arrow, bg, fg, zsh_wrap_escapes, ARROW};
 
     #[test]
     fn fg_produces_ansi_color() {
@@ -94,5 +94,20 @@ mod tests {
         assert!(wrapped.contains(" $ "));
         assert!(wrapped.contains("%{"));
         assert!(wrapped.contains("%}"));
+    }
+
+    #[test]
+    fn arrow_with_from_bg_includes_glyph() {
+        let out = arrow(Some(237), 148);
+        assert!(out.contains(&fg(237)));
+        assert!(out.contains(&bg(148)));
+        assert!(out.contains(ARROW));
+    }
+
+    #[test]
+    fn arrow_without_from_bg_is_just_bg() {
+        let out = arrow(None, 31);
+        assert_eq!(out, bg(31));
+        assert!(!out.contains(ARROW));
     }
 }

@@ -89,8 +89,9 @@ pub fn render(home: &str, pwd: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::render;
+    use super::{render, render_from_info};
     use crate::color::{BRANCH_ICON, PENCIL_ICON};
+    use crate::segments::git::GitInfo;
     use crate::segments::testutil::init_repo;
     use std::fs;
     use tempfile::TempDir;
@@ -140,5 +141,51 @@ mod tests {
             "expected pink branch in: {out}"
         );
         assert!(out.contains(PENCIL_ICON), "dirty repo should have pencil");
+    }
+
+    // render_from_info tests
+
+    #[test]
+    fn render_from_info_home_returns_house() {
+        let home = "/home/user";
+        let out = render_from_info(home, home, None);
+        assert!(out.contains('\u{1F3E0}'), "expected house emoji");
+        assert!(out.contains('~'));
+    }
+
+    #[test]
+    fn render_from_info_no_git_info_returns_folder() {
+        let tmp = TempDir::new().unwrap();
+        let pwd = tmp.path().to_string_lossy().to_string();
+        let out = render_from_info("/nonexistent", &pwd, None);
+        assert!(out.contains('\u{1F4C1}'), "expected folder emoji in: {out}");
+    }
+
+    #[test]
+    fn render_from_info_clean_repo_is_blue() {
+        let info = GitInfo {
+            repo_name: "myrepo".to_string(),
+            branch: "main".to_string(),
+            dirty: false,
+        };
+        let out = render_from_info("/home/user", "/home/user/src", Some(&info));
+        assert!(out.contains("#[fg=colour117]"), "expected blue branch in: {out}");
+        assert!(out.contains("myrepo"), "expected repo name in: {out}");
+        assert!(out.contains("main"), "expected branch in: {out}");
+        assert!(!out.contains(PENCIL_ICON), "clean repo should not have pencil icon");
+    }
+
+    #[test]
+    fn render_from_info_dirty_repo_is_pink_with_pencil() {
+        let info = GitInfo {
+            repo_name: "myrepo".to_string(),
+            branch: "feature".to_string(),
+            dirty: true,
+        };
+        let out = render_from_info("/home/user", "/home/user/src", Some(&info));
+        assert!(out.contains("#[fg=colour174]"), "expected pink branch in: {out}");
+        assert!(out.contains(PENCIL_ICON), "dirty repo should have pencil icon");
+        assert!(out.contains("feature"), "expected branch name in: {out}");
+        assert!(out.contains(BRANCH_ICON), "expected branch icon in: {out}");
     }
 }

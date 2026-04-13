@@ -4,12 +4,9 @@ use std::process::Command;
 use git2::Repository;
 
 pub fn run() {
-    let repo = match Repository::discover(".") {
-        Ok(r) => r,
-        Err(_) => {
-            eprintln!("not a git repository");
-            std::process::exit(1);
-        }
+    let Ok(repo) = Repository::discover(".") else {
+        eprintln!("not a git repository");
+        std::process::exit(1);
     };
 
     let mut out = String::with_capacity(2048);
@@ -46,10 +43,10 @@ fn render_branch_status(repo: &Repository, out: &mut String) {
         let _ = writeln!(out, "  \x1b[32mup to date with remote\x1b[0m");
     } else {
         if ahead > 0 {
-            let _ = writeln!(out, "  \x1b[33m{ahead} commit{} ahead\x1b[0m", plural(ahead));
+            let _ = writeln!(out, "  \x1b[33m{ahead} commit{} ahead\x1b[0m", plural(u64::from(ahead)));
         }
         if behind > 0 {
-            let _ = writeln!(out, "  \x1b[33m{behind} commit{} behind\x1b[0m", plural(behind));
+            let _ = writeln!(out, "  \x1b[33m{behind} commit{} behind\x1b[0m", plural(u64::from(behind)));
         }
     }
     let _ = writeln!(out);
@@ -111,14 +108,14 @@ fn render_drift(repo: &Repository, out: &mut String) {
                 let _ = writeln!(
                     out,
                     "  \x1b[36m{ahead} commit{} ahead\x1b[0m",
-                    plural(ahead as u32)
+                    plural(ahead as u64)
                 );
             }
             if behind > 0 {
                 let _ = writeln!(
                     out,
                     "  \x1b[33m{behind} commit{} behind\x1b[0m",
-                    plural(behind as u32)
+                    plural(behind as u64)
                 );
             }
         }
@@ -257,7 +254,12 @@ fn ahead_behind(repo: &Repository) -> (u32, u32) {
         return (0, 0);
     };
     repo.graph_ahead_behind(local_oid, upstream_oid)
-        .map(|(a, b)| (a as u32, b as u32))
+        .map(|(a, b)| {
+            (
+                u32::try_from(a).unwrap_or(u32::MAX),
+                u32::try_from(b).unwrap_or(u32::MAX),
+            )
+        })
         .unwrap_or((0, 0))
 }
 
@@ -271,26 +273,239 @@ fn find_main_branch(repo: &Repository) -> String {
 }
 
 fn format_age(epoch_secs: i64) -> String {
-    let now = std::time::SystemTime::now()
+    let now: u64 = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_secs() as i64)
+        .map(|d| d.as_secs())
         .unwrap_or(0);
 
-    let delta = now - epoch_secs;
+    let epoch_u64 = u64::try_from(epoch_secs).unwrap_or(0);
+    let delta = now.saturating_sub(epoch_u64);
+
     if delta < 60 {
         "just now".to_string()
     } else if delta < 3600 {
         let m = delta / 60;
-        format!("{m} min{} ago", plural(m as u32))
+        format!("{m} min{} ago", plural(m))
     } else if delta < 86400 {
         let h = delta / 3600;
-        format!("{h} hour{} ago", plural(h as u32))
+        format!("{h} hour{} ago", plural(h))
     } else {
         let d = delta / 86400;
-        format!("{d} day{} ago", plural(d as u32))
+        format!("{d} day{} ago", plural(d))
     }
 }
 
-fn plural(n: u32) -> &'static str {
+fn plural(n: u64) -> &'static str {
     if n == 1 { "" } else { "s" }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        current_branch, find_main_branch, format_age, plural, render_branch_status,
+        render_drift, render_header, render_recent_commits,
+    };
+    use crate::segments::testutil::init_repo;
+    use tempfile::TempDir;
+
+    // --- plural ---
+
+    #[test]
+    fn plural_one_is_empty() {
+        assert_eq!(plural(1), "");
+    }
+
+    #[test]
+    fn plural_zero_and_many_is_s() {
+        assert_eq!(plural(0), "s");
+        assert_eq!(plural(2), "s");
+        assert_eq!(plural(100), "s");
+    }
+
+    // --- format_age ---
+
+    fn now_secs() -> i64 {
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs() as i64)
+            .unwrap_or(0)
+    }
+
+    #[test]
+    fn format_age_just_now() {
+        let out = format_age(now_secs());
+        assert_eq!(out, "just now");
+    }
+
+    #[test]
+    fn format_age_minutes() {
+        let out = format_age(now_secs() - 300); // 5 min ago
+        assert!(out.contains("min"), "expected 'min' in: {out}");
+        assert!(out.contains("ago"), "expected 'ago' in: {out}");
+        assert!(out.contains('5'), "expected '5' in: {out}");
+    }
+
+    #[test]
+    fn format_age_one_minute_singular() {
+        let out = format_age(now_secs() - 60);
+        assert!(out.contains("1 min ago"), "expected '1 min ago' in: {out}");
+    }
+
+    #[test]
+    fn format_age_hours() {
+        let out = format_age(now_secs() - 7200); // 2 hours ago
+        assert!(out.contains("hour"), "expected 'hour' in: {out}");
+        assert!(out.contains('2'), "expected '2' in: {out}");
+    }
+
+    #[test]
+    fn format_age_one_hour_singular() {
+        let out = format_age(now_secs() - 3600);
+        assert!(out.contains("1 hour ago"), "expected '1 hour ago' in: {out}");
+    }
+
+    #[test]
+    fn format_age_days() {
+        let out = format_age(now_secs() - 3 * 86400); // 3 days ago
+        assert!(out.contains("day"), "expected 'day' in: {out}");
+        assert!(out.contains('3'), "expected '3' in: {out}");
+    }
+
+    #[test]
+    fn format_age_one_day_singular() {
+        let out = format_age(now_secs() - 86400);
+        assert!(out.contains("1 day ago"), "expected '1 day ago' in: {out}");
+    }
+
+    // --- find_main_branch ---
+
+    #[test]
+    fn find_main_branch_finds_initial_branch() {
+        let tmp = TempDir::new().unwrap();
+        let repo = init_repo(tmp.path());
+        let branch = find_main_branch(&repo);
+        assert!(
+            branch == "master" || branch == "main",
+            "expected main or master, got: {branch}"
+        );
+    }
+
+    #[test]
+    fn find_main_branch_falls_back_to_main() {
+        // A repo with a branch named "feature" has neither main nor master
+        let tmp = TempDir::new().unwrap();
+        let repo = init_repo(tmp.path());
+        // Rename the current branch away from main/master
+        let head_ref = repo.head().unwrap().target().unwrap();
+        repo.branch("feature", &repo.find_commit(head_ref).unwrap(), false).unwrap();
+        repo.set_head("refs/heads/feature").unwrap();
+        // Delete original branch
+        let orig = find_main_branch(&repo);
+        let mut orig_branch = repo.find_branch(&orig, git2::BranchType::Local).unwrap();
+        orig_branch.delete().unwrap();
+
+        let branch = find_main_branch(&repo);
+        assert_eq!(branch, "main", "should fall back to 'main' when neither exists");
+    }
+
+    // --- current_branch ---
+
+    #[test]
+    fn current_branch_returns_branch_name() {
+        let tmp = TempDir::new().unwrap();
+        let repo = init_repo(tmp.path());
+        let branch = current_branch(&repo);
+        assert!(
+            branch == "master" || branch == "main",
+            "expected branch name, got: {branch}"
+        );
+    }
+
+    #[test]
+    fn current_branch_detached_returns_short_sha() {
+        let tmp = TempDir::new().unwrap();
+        let repo = init_repo(tmp.path());
+        let head_oid = repo.head().unwrap().target().unwrap();
+        let expected = head_oid.to_string()[..7].to_string();
+        repo.set_head_detached(head_oid).unwrap();
+        let branch = current_branch(&repo);
+        assert_eq!(branch, expected, "detached HEAD should show short SHA");
+    }
+
+    // --- render_header ---
+
+    #[test]
+    fn render_header_contains_branch_and_repo_name() {
+        let tmp = TempDir::new().unwrap();
+        let repo = init_repo(tmp.path());
+        let mut out = String::new();
+        render_header(&repo, &mut out);
+        assert!(!out.is_empty());
+        assert!(
+            out.contains("master") || out.contains("main"),
+            "expected branch name in: {out}"
+        );
+    }
+
+    // --- render_branch_status ---
+
+    #[test]
+    fn render_branch_status_no_upstream_is_up_to_date() {
+        let tmp = TempDir::new().unwrap();
+        let repo = init_repo(tmp.path());
+        let mut out = String::new();
+        render_branch_status(&repo, &mut out);
+        assert!(out.contains("up to date"), "expected 'up to date' in: {out}");
+    }
+
+    // --- render_recent_commits ---
+
+    #[test]
+    fn render_recent_commits_shows_initial_commit() {
+        let tmp = TempDir::new().unwrap();
+        let repo = init_repo(tmp.path());
+        let mut out = String::new();
+        render_recent_commits(&repo, &mut out);
+        assert!(out.contains("Recent commits"), "expected header in: {out}");
+        assert!(out.contains("init"), "expected initial commit message in: {out}");
+    }
+
+    // --- render_drift ---
+
+    #[test]
+    fn render_drift_on_main_branch_is_silent() {
+        let tmp = TempDir::new().unwrap();
+        let repo = init_repo(tmp.path());
+        let mut out = String::new();
+        render_drift(&repo, &mut out);
+        assert!(out.is_empty(), "render_drift should be silent when on main branch: {out}");
+    }
+
+    #[test]
+    fn render_drift_on_feature_branch_shows_ahead() {
+        use std::fs;
+        let tmp = TempDir::new().unwrap();
+        let repo = init_repo(tmp.path());
+
+        // Create and switch to a feature branch
+        let head_oid = repo.head().unwrap().target().unwrap();
+        let head_commit = repo.find_commit(head_oid).unwrap();
+        repo.branch("feature", &head_commit, false).unwrap();
+        repo.set_head("refs/heads/feature").unwrap();
+
+        // Add a commit on the feature branch
+        fs::write(tmp.path().join("feat.txt"), "x").unwrap();
+        let mut index = repo.index().unwrap();
+        index.add_path(std::path::Path::new("feat.txt")).unwrap();
+        index.write().unwrap();
+        let tree_id = index.write_tree().unwrap();
+        let tree = repo.find_tree(tree_id).unwrap();
+        let sig = repo.signature().unwrap();
+        repo.commit(Some("HEAD"), &sig, &sig, "feat: add file", &tree, &[&head_commit]).unwrap();
+
+        let mut out = String::new();
+        render_drift(&repo, &mut out);
+        assert!(out.contains("Drift"), "expected 'Drift' in: {out}");
+        assert!(out.contains("ahead"), "expected 'ahead' in: {out}");
+    }
 }

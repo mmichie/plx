@@ -60,19 +60,19 @@ pub fn render_with(
                 || s.is_index_typechange()
             {
                 staged += 1;
-                if s.is_wt_modified() || s.is_wt_deleted() || s.is_wt_typechange() {
-                    if !has_filter_attr(repo, entry.path()) {
-                        modified += 1;
-                    }
+                if (s.is_wt_modified() || s.is_wt_deleted() || s.is_wt_typechange())
+                    && !has_filter_attr(repo, entry.path())
+                {
+                    modified += 1;
                 }
                 if s.is_wt_new() {
                     untracked += 1;
                 }
             } else {
-                if s.is_wt_modified() || s.is_wt_deleted() || s.is_wt_typechange() {
-                    if !has_filter_attr(repo, entry.path()) {
-                        modified += 1;
-                    }
+                if (s.is_wt_modified() || s.is_wt_deleted() || s.is_wt_typechange())
+                    && !has_filter_attr(repo, entry.path())
+                {
+                    modified += 1;
                 }
                 if s.is_wt_new() {
                     untracked += 1;
@@ -412,5 +412,19 @@ mod tests {
         assert!(out.contains(ARROW));
         assert_eq!(end_bg, Some(236));
         assert!(git_info.is_none(), "no repo should yield None");
+    }
+
+    #[test]
+    fn detached_head_shows_short_sha() {
+        let tmp = TempDir::new().unwrap();
+        let repo = init_repo(tmp.path());
+
+        let head_oid = repo.head().unwrap().target().unwrap();
+        let short_sha = head_oid.to_string()[..7].to_string();
+        repo.set_head_detached(head_oid).unwrap();
+
+        let out = render(tmp.path());
+        assert!(out.contains(&short_sha), "expected short SHA {short_sha} in: {out}");
+        assert!(out.contains(BRANCH_ICON), "expected branch icon in detached state: {out}");
     }
 }
