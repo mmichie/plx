@@ -345,12 +345,11 @@ fn get_ip_addr() -> String {
 fn get_ncores() -> u32 {
     std::fs::read_to_string("/proc/cpuinfo")
         .ok()
-        .map(|s| {
+        .map_or(1, |s| {
             #[allow(clippy::cast_possible_truncation)]
             let n = s.lines().filter(|l| l.starts_with("processor")).count() as u32;
             n.max(1)
         })
-        .unwrap_or(1)
 }
 
 #[cfg(target_os = "linux")]
@@ -404,10 +403,8 @@ fn get_disk_info() -> (u64, u64) {
     let ret = unsafe { libc::statvfs(path.as_ptr(), stat.as_mut_ptr()) };
     if ret == 0 {
         let s = unsafe { stat.assume_init() };
-        #[allow(clippy::unnecessary_cast)]
-        let total = s.f_frsize as u64 * u64::from(s.f_blocks);
-        #[allow(clippy::unnecessary_cast)]
-        let free = s.f_frsize as u64 * u64::from(s.f_bavail);
+        let total = s.f_frsize * s.f_blocks;
+        let free = s.f_frsize * s.f_bavail;
         (total, total.saturating_sub(free))
     } else {
         (0, 0)
@@ -433,15 +430,17 @@ fn get_uptime_secs() -> u64 {
                 .next()
                 .and_then(|v| v.parse::<f64>().ok())
         })
-        .map(|v| v as u64)
-        .unwrap_or(0)
+        .map_or(0, |v| {
+            #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+            { v as u64 }
+        })
 }
 
 #[cfg(target_os = "linux")]
 fn get_proc_count() -> u32 {
     std::fs::read_dir("/proc")
         .ok()
-        .map(|entries| {
+        .map_or(0, |entries| {
             #[allow(clippy::cast_possible_truncation)]
             let n = entries
                 .filter_map(Result::ok)
@@ -453,7 +452,6 @@ fn get_proc_count() -> u32 {
                 .count() as u32;
             n
         })
-        .unwrap_or(0)
 }
 
 #[cfg(target_os = "linux")]
