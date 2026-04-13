@@ -3,6 +3,10 @@ name = "plx"
 version = "0.1.0"
 edition = "2024"
 license = "MIT"
+description = "Powerline-styled prompt segments and tmux window titles for zsh"
+repository = "https://github.com/mmichie/plx"
+keywords = ["prompt", "powerline", "tmux", "zsh", "shell"]
+categories = ["command-line-utilities"]
 
 [features]
 default = ["banner"]

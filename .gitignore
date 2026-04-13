@@ -1,3 +1,4 @@
 /target
 result
 .claude/
+.beads/dolt-server.*
