@@ -1,4 +1,4 @@
-use crate::color::{fg, ARROW, RST};
+use crate::color::{ARROW, RST, fg};
 
 #[must_use]
 pub fn render_final(from_bg: Option<u8>) -> String {
@@ -12,7 +12,7 @@ pub fn render_final(from_bg: Option<u8>) -> String {
 #[cfg(test)]
 mod tests {
     use super::render_final;
-    use crate::color::{fg, ARROW, RST};
+    use crate::color::{ARROW, RST, fg};
 
     #[test]
     fn with_bg() {

@@ -135,7 +135,11 @@ fn draw_char(
     let y0 = row * GLYPH_H * scale;
     for py in 0..GLYPH_H {
         for px in 0..GLYPH_W {
-            let color = if font::glyph_pixel(ch, px, py) { fg } else { bg };
+            let color = if font::glyph_pixel(ch, px, py) {
+                fg
+            } else {
+                bg
+            };
             for sy in 0..scale {
                 for sx in 0..scale {
                     let ix = x0 + px * scale + sx;
@@ -242,7 +246,12 @@ fn lerp_color(a: Rgba<u8>, b: Rgba<u8>, t: f32) -> Rgba<u8> {
             .mul_add(1.0 - t, f32::from(b) * t)
             .clamp(0.0, 255.0) as u8
     };
-    Rgba([mix(a.0[0], b.0[0]), mix(a.0[1], b.0[1]), mix(a.0[2], b.0[2]), 255])
+    Rgba([
+        mix(a.0[0], b.0[0]),
+        mix(a.0[1], b.0[1]),
+        mix(a.0[2], b.0[2]),
+        255,
+    ])
 }
 
 #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
@@ -449,13 +458,7 @@ struct BigLetter {
 }
 
 #[allow(clippy::cast_precision_loss)]
-fn draw_big_title(
-    img: &mut RgbaImage,
-    start_row: u32,
-    text: &str,
-    pal: &Palette,
-    scale: u32,
-) {
+fn draw_big_title(img: &mut RgbaImage, start_row: u32, text: &str, pal: &Palette, scale: u32) {
     let letters: Vec<BigLetter> = text
         .bytes()
         .filter_map(|ch| big_letter(ch).map(|(w, rows)| BigLetter { width: w, rows }))
@@ -527,8 +530,7 @@ fn draw_big_title(
                 let has_top = by == 0 || !pixel_set(letter.rows, bx, by - 1);
                 let has_left = bx == 0 || !pixel_set(letter.rows, bx - 1, by);
                 let has_bottom = by >= 6 || !pixel_set(letter.rows, bx, by + 1);
-                let has_right =
-                    bx + 1 >= letter.width || !pixel_set(letter.rows, bx + 1, by);
+                let has_right = bx + 1 >= letter.width || !pixel_set(letter.rows, bx + 1, by);
 
                 // Dark bevels (bottom/right) drawn first
                 if has_bottom {
@@ -614,15 +616,7 @@ fn draw_tagline_box(
     let box_mid = make_box_mid(tagline, box_w);
     let box_bot = make_box_bot(&node_label, box_w);
     draw_bytes(img, 0, start_row, &box_top, pal.border_fg, pal.bg, scale);
-    draw_bytes(
-        img,
-        0,
-        start_row + 1,
-        &box_mid,
-        pal.label_fg,
-        pal.bg,
-        scale,
-    );
+    draw_bytes(img, 0, start_row + 1, &box_mid, pal.label_fg, pal.bg, scale);
     draw_bytes(
         img,
         0,
@@ -677,7 +671,13 @@ fn threshold_color(pct: f32, pal: &Palette) -> Rgba<u8> {
 }
 
 /// Draw a 3D beveled progress bar at pixel coordinates.
-#[allow(dead_code, clippy::cast_precision_loss, clippy::cast_possible_truncation, clippy::cast_sign_loss, clippy::too_many_arguments)]
+#[allow(
+    dead_code,
+    clippy::cast_precision_loss,
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    clippy::too_many_arguments
+)]
 fn draw_bar_3d(
     img: &mut RgbaImage,
     x: u32,
@@ -720,7 +720,12 @@ fn draw_bar_3d(
 }
 
 /// Draw a stacked bar with multiple colored segments, 3D bevel treatment.
-#[allow(dead_code, clippy::cast_precision_loss, clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+#[allow(
+    dead_code,
+    clippy::cast_precision_loss,
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss
+)]
 fn draw_stacked_bar_3d(
     img: &mut RgbaImage,
     x: u32,
@@ -776,7 +781,12 @@ fn draw_stacked_bar_3d(
 }
 
 /// Draw 3 side-by-side mini vertical bars for load trend.
-#[allow(clippy::cast_precision_loss, clippy::cast_possible_truncation, clippy::cast_sign_loss, clippy::too_many_arguments)]
+#[allow(
+    clippy::cast_precision_loss,
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    clippy::too_many_arguments
+)]
 fn draw_mini_bars(
     img: &mut RgbaImage,
     x: u32,
@@ -832,7 +842,11 @@ fn draw_text_px(
         let cx = x + i as u32 * gw;
         for py in 0..GLYPH_H {
             for px in 0..GLYPH_W {
-                let color = if font::glyph_pixel(ch, px, py) { fg } else { bg_color };
+                let color = if font::glyph_pixel(ch, px, py) {
+                    fg
+                } else {
+                    bg_color
+                };
                 for sy in 0..scale {
                     for sx in 0..scale {
                         let ix = cx + px * scale + sx;
@@ -958,8 +972,7 @@ fn draw_arc(
             let coverage = radial * angular;
             if coverage > 0.001 {
                 let final_color = if bevel && r_outer > r_inner {
-                    let radial_t =
-                        ((dist - r_inner) / (r_outer - r_inner)).clamp(0.0, 1.0);
+                    let radial_t = ((dist - r_inner) / (r_outer - r_inner)).clamp(0.0, 1.0);
                     let bevel_factor = radial_t.mul_add(0.7, 0.6);
                     scale_color(color, bevel_factor)
                 } else {
@@ -1123,26 +1136,46 @@ fn draw_dashboard(
         draw_text(img, label_col, row, "LOD", pal.label_fg, pal.bg, scale);
 
         let ncores = info.ncores.max(1) as f32;
-        let values = [
-            info.load_1 as f32,
-            info.load_5 as f32,
-            info.load_15 as f32,
-        ];
+        let values = [info.load_1 as f32, info.load_5 as f32, info.load_15 as f32];
         let mini_w = 8 * scale;
         let mini_h = bar_h;
-        draw_mini_bars(img, bar_x, row_y + bar_y_off, &values, ncores, mini_w, mini_h, pal);
+        draw_mini_bars(
+            img,
+            bar_x,
+            row_y + bar_y_off,
+            &values,
+            ncores,
+            mini_w,
+            mini_h,
+            pal,
+        );
 
         // Load values as text after the mini bars
         let text_x = bar_x + 3 * (mini_w + 2) + gw;
-        let load_text = format!("{:.2}  {:.2}  {:.2}", info.load_1, info.load_5, info.load_15);
-        draw_text_px(img, text_x, row_y + bar_y_off, &load_text, pal.value_fg, pal.bg, scale);
+        let load_text = format!(
+            "{:.2}  {:.2}  {:.2}",
+            info.load_1, info.load_5, info.load_15
+        );
+        draw_text_px(
+            img,
+            text_x,
+            row_y + bar_y_off,
+            &load_text,
+            pal.value_fg,
+            pal.bg,
+            scale,
+        );
     }
 
     // Row 5: Uptime, process count, IP
     {
         let row = start_row + 5;
         let uptime = format_uptime(info.uptime_secs);
-        let ip = if info.ip_addr.is_empty() { "N/A" } else { &info.ip_addr };
+        let ip = if info.ip_addr.is_empty() {
+            "N/A"
+        } else {
+            &info.ip_addr
+        };
         let line = format!("UPT {uptime}  PRC {}  IP {ip}", info.proc_count);
         draw_text(img, label_col, row, &line, pal.value_fg, pal.bg, scale);
     }
@@ -1361,7 +1394,12 @@ pub fn generate(scale: u32, palette_name: &str, banner_type: Option<&str>, title
     let mut png_buf: Vec<u8> = Vec::new();
     let encoder = image::codecs::png::PngEncoder::new(&mut png_buf);
     encoder
-        .write_image(cropped.as_raw(), width, height, image::ExtendedColorType::Rgba8)
+        .write_image(
+            cropped.as_raw(),
+            width,
+            height,
+            image::ExtendedColorType::Rgba8,
+        )
         .expect("failed to encode PNG");
 
     if raw_png {

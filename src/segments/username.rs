@@ -1,6 +1,6 @@
 use std::fmt::Write;
 
-use crate::color::{arrow, fg, BOLD, UNBOLD};
+use crate::color::{BOLD, UNBOLD, arrow, fg};
 
 const MY_BG: u8 = 240;
 const MY_FG: u8 = 250;
@@ -17,7 +17,12 @@ pub fn render_with(from_bg: Option<u8>) -> (String, Option<u8>) {
     let mut out = String::with_capacity(64);
 
     if is_root {
-        let _ = write!(out, "{} {BOLD}{}{user}{UNBOLD} ", arrow(from_bg, MY_BG), fg(ROOT_FG));
+        let _ = write!(
+            out,
+            "{} {BOLD}{}{user}{UNBOLD} ",
+            arrow(from_bg, MY_BG),
+            fg(ROOT_FG)
+        );
     } else {
         let _ = write!(out, "{} {}{user} ", arrow(from_bg, MY_BG), fg(MY_FG));
     }
@@ -28,7 +33,7 @@ pub fn render_with(from_bg: Option<u8>) -> (String, Option<u8>) {
 #[cfg(test)]
 mod tests {
     use super::render_with;
-    use crate::color::{bg, fg, ARROW};
+    use crate::color::{ARROW, bg, fg};
     use serial_test::serial;
 
     #[test]
@@ -52,7 +57,10 @@ mod tests {
         assert!(out.contains(&bg(240)), "expected bg(240) in: {out}");
         assert!(out.contains(&fg(250)), "expected fg(250) in: {out}");
         assert_eq!(end_bg, Some(240));
-        assert!(!out.contains(ARROW), "should not have arrow when first segment");
+        assert!(
+            !out.contains(ARROW),
+            "should not have arrow when first segment"
+        );
     }
 
     #[test]
@@ -62,7 +70,10 @@ mod tests {
         unsafe { std::env::set_var("USER", "alice") };
         let (out, _) = render_with(Some(238));
         assert!(out.contains(ARROW), "expected arrow in: {out}");
-        assert!(out.contains(&fg(238)), "expected fg(238) for arrow in: {out}");
+        assert!(
+            out.contains(&fg(238)),
+            "expected fg(238) for arrow in: {out}"
+        );
     }
 
     #[test]

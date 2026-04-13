@@ -1,11 +1,8 @@
-use crate::color::{fg, RST};
+use crate::color::{RST, fg};
 
 #[must_use]
 pub fn render_prefix() -> String {
-    let Some(path) = std::env::var("VIRTUAL_ENV")
-        .ok()
-        .filter(|v| !v.is_empty())
-    else {
+    let Some(path) = std::env::var("VIRTUAL_ENV").ok().filter(|v| !v.is_empty()) else {
         return String::new();
     };
 
@@ -24,7 +21,7 @@ pub fn render_prefix() -> String {
 #[cfg(test)]
 mod tests {
     use super::render_prefix;
-    use crate::color::{fg, RST};
+    use crate::color::{RST, fg};
     use serial_test::serial;
 
     #[test]

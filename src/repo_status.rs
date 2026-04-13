@@ -43,10 +43,18 @@ fn render_branch_status(repo: &Repository, out: &mut String) {
         let _ = writeln!(out, "  \x1b[32mup to date with remote\x1b[0m");
     } else {
         if ahead > 0 {
-            let _ = writeln!(out, "  \x1b[33m{ahead} commit{} ahead\x1b[0m", plural(u64::from(ahead)));
+            let _ = writeln!(
+                out,
+                "  \x1b[33m{ahead} commit{} ahead\x1b[0m",
+                plural(u64::from(ahead))
+            );
         }
         if behind > 0 {
-            let _ = writeln!(out, "  \x1b[33m{behind} commit{} behind\x1b[0m", plural(u64::from(behind)));
+            let _ = writeln!(
+                out,
+                "  \x1b[33m{behind} commit{} behind\x1b[0m",
+                plural(u64::from(behind))
+            );
         }
     }
     let _ = writeln!(out);
@@ -136,9 +144,18 @@ fn render_open_prs(out: &mut String) {
 
     let result = Command::new("gh")
         .args([
-            "pr", "list", "--author", "@me", "--state", "open", "--limit", "10",
-            "--json", "number,title,headRefName,statusCheckRollup",
-            "--jq", jq,
+            "pr",
+            "list",
+            "--author",
+            "@me",
+            "--state",
+            "open",
+            "--limit",
+            "10",
+            "--json",
+            "number,title,headRefName,statusCheckRollup",
+            "--jq",
+            jq,
         ])
         .output();
 
@@ -176,8 +193,12 @@ fn render_ci_status(out: &mut String) {
     // Use --jq to format each check as: name\tstate\tconclusion
     let result = Command::new("gh")
         .args([
-            "pr", "checks", "--json", "name,state,conclusion",
-            "--jq", ".[] | [.name, .state, .conclusion] | @tsv",
+            "pr",
+            "checks",
+            "--json",
+            "name,state,conclusion",
+            "--jq",
+            ".[] | [.name, .state, .conclusion] | @tsv",
         ])
         .output();
 
@@ -226,7 +247,10 @@ fn current_branch(repo: &Repository) -> String {
             .head()
             .ok()
             .and_then(|h| h.peel_to_commit().ok())
-            .map_or_else(|| "HEAD".to_string(), |c| c.id().to_string()[..7].to_string());
+            .map_or_else(
+                || "HEAD".to_string(),
+                |c| c.id().to_string()[..7].to_string(),
+            );
     }
     repo.head()
         .ok()
@@ -302,8 +326,8 @@ fn plural(n: u64) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::{
-        current_branch, find_main_branch, format_age, plural, render_branch_status,
-        render_drift, render_header, render_recent_commits,
+        current_branch, find_main_branch, format_age, plural, render_branch_status, render_drift,
+        render_header, render_recent_commits,
     };
     use crate::segments::testutil::init_repo;
     use tempfile::TempDir;
@@ -361,7 +385,10 @@ mod tests {
     #[test]
     fn format_age_one_hour_singular() {
         let out = format_age(now_secs() - 3600);
-        assert!(out.contains("1 hour ago"), "expected '1 hour ago' in: {out}");
+        assert!(
+            out.contains("1 hour ago"),
+            "expected '1 hour ago' in: {out}"
+        );
     }
 
     #[test]
@@ -397,7 +424,8 @@ mod tests {
         let repo = init_repo(tmp.path());
         // Rename the current branch away from main/master
         let head_ref = repo.head().unwrap().target().unwrap();
-        repo.branch("feature", &repo.find_commit(head_ref).unwrap(), false).unwrap();
+        repo.branch("feature", &repo.find_commit(head_ref).unwrap(), false)
+            .unwrap();
         repo.set_head("refs/heads/feature").unwrap();
         // Delete original branch
         let orig = find_main_branch(&repo);
@@ -405,7 +433,10 @@ mod tests {
         orig_branch.delete().unwrap();
 
         let branch = find_main_branch(&repo);
-        assert_eq!(branch, "main", "should fall back to 'main' when neither exists");
+        assert_eq!(
+            branch, "main",
+            "should fall back to 'main' when neither exists"
+        );
     }
 
     // --- current_branch ---
@@ -455,7 +486,10 @@ mod tests {
         let repo = init_repo(tmp.path());
         let mut out = String::new();
         render_branch_status(&repo, &mut out);
-        assert!(out.contains("up to date"), "expected 'up to date' in: {out}");
+        assert!(
+            out.contains("up to date"),
+            "expected 'up to date' in: {out}"
+        );
     }
 
     // --- render_recent_commits ---
@@ -467,7 +501,10 @@ mod tests {
         let mut out = String::new();
         render_recent_commits(&repo, &mut out);
         assert!(out.contains("Recent commits"), "expected header in: {out}");
-        assert!(out.contains("init"), "expected initial commit message in: {out}");
+        assert!(
+            out.contains("init"),
+            "expected initial commit message in: {out}"
+        );
     }
 
     // --- render_drift ---
@@ -478,7 +515,10 @@ mod tests {
         let repo = init_repo(tmp.path());
         let mut out = String::new();
         render_drift(&repo, &mut out);
-        assert!(out.is_empty(), "render_drift should be silent when on main branch: {out}");
+        assert!(
+            out.is_empty(),
+            "render_drift should be silent when on main branch: {out}"
+        );
     }
 
     #[test]
@@ -501,7 +541,15 @@ mod tests {
         let tree_id = index.write_tree().unwrap();
         let tree = repo.find_tree(tree_id).unwrap();
         let sig = repo.signature().unwrap();
-        repo.commit(Some("HEAD"), &sig, &sig, "feat: add file", &tree, &[&head_commit]).unwrap();
+        repo.commit(
+            Some("HEAD"),
+            &sig,
+            &sig,
+            "feat: add file",
+            &tree,
+            &[&head_commit],
+        )
+        .unwrap();
 
         let mut out = String::new();
         render_drift(&repo, &mut out);

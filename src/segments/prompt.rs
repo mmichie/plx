@@ -101,7 +101,7 @@ pub fn render(ctx: &mut PromptContext) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{render, PromptContext};
+    use super::{PromptContext, render};
     use crate::color::{ARROW, BRANCH_ICON, RST};
     use crate::segments::testutil::init_repo;
     use serial_test::serial;
@@ -177,7 +177,10 @@ mod tests {
         let out = render(&mut ctx);
         let lines: Vec<&str> = out.splitn(2, '\n').collect();
         assert_eq!(lines.len(), 2, "expected two lines in tmux mode: {out}");
-        assert!(lines[0].contains(BRANCH_ICON), "prompt line should have branch");
+        assert!(
+            lines[0].contains(BRANCH_ICON),
+            "prompt line should have branch"
+        );
         assert!(
             lines[1].contains(BRANCH_ICON),
             "tmux title should have branch: {}",

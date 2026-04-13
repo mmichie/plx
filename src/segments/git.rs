@@ -2,7 +2,7 @@ use std::fmt::Write;
 
 use git2::{AttrCheckFlags, Repository, StatusOptions, StatusShow};
 
-use crate::color::{arrow, bg, fg, ARROW, BRANCH_ICON, RST};
+use crate::color::{ARROW, BRANCH_ICON, RST, arrow, bg, fg};
 
 /// Pre-computed git metadata for reuse by other segments (e.g. tmux title).
 pub struct GitInfo {
@@ -105,8 +105,7 @@ pub fn render_with(
     };
 
     // Determine if dirty — stashes are shown as an indicator but don't flip the bar pink
-    let dirty = staged + modified + untracked + conflicted + ahead + behind > 0
-        || state.is_some();
+    let dirty = staged + modified + untracked + conflicted + ahead + behind > 0 || state.is_some();
 
     let repo_name = repo
         .workdir()
@@ -133,12 +132,7 @@ pub fn render_with(
 
         // Git state
         if let Some(st) = state {
-            let _ = write!(
-                out,
-                "{}{}{ARROW} {}{st} ",
-                fg(prev), bg(220),
-                fg(0),
-            );
+            let _ = write!(out, "{}{}{ARROW} {}{st} ", fg(prev), bg(220), fg(0),);
             prev = 220;
         }
 
@@ -170,7 +164,8 @@ pub fn render_with(
             let _ = write!(
                 out,
                 "{}{}{ARROW} {}{seg_text} ",
-                fg(prev), bg(*seg_bg),
+                fg(prev),
+                bg(*seg_bg),
                 fg(15),
             );
             prev = *seg_bg;
@@ -186,9 +181,11 @@ pub fn render_with(
                 "{} {}{BRANCH_ICON} {branch} {}{}{ARROW} {}{stashed}⚑ {}{}{ARROW}",
                 arrow(from_bg, 148),
                 fg(0),
-                fg(148), bg(20),
+                fg(148),
+                bg(20),
                 fg(15),
-                fg(20), bg(236),
+                fg(20),
+                bg(236),
             );
         } else {
             let _ = write!(
@@ -196,7 +193,8 @@ pub fn render_with(
                 "{} {}{BRANCH_ICON} {branch} {}{}{ARROW}",
                 arrow(from_bg, 148),
                 fg(0),
-                fg(148), bg(236),
+                fg(148),
+                bg(236),
             );
         }
     }
@@ -216,8 +214,12 @@ pub fn render(discover_from: &std::path::Path) -> String {
 /// to the index, so filtered files can appear falsely modified.
 fn has_filter_attr(repo: &Repository, path: Option<&str>) -> bool {
     let Some(path) = path else { return false };
-    repo.get_attr(std::path::Path::new(path), "filter", AttrCheckFlags::default())
-        .is_ok_and(|v| v.is_some())
+    repo.get_attr(
+        std::path::Path::new(path),
+        "filter",
+        AttrCheckFlags::default(),
+    )
+    .is_ok_and(|v| v.is_some())
 }
 
 fn ahead_behind(repo: &Repository) -> (u32, u32) {
@@ -259,7 +261,7 @@ fn ahead_behind(repo: &Repository) -> (u32, u32) {
 #[cfg(test)]
 mod tests {
     use super::{render, render_with};
-    use crate::color::{bg, fg, ARROW, BRANCH_ICON, RST};
+    use crate::color::{ARROW, BRANCH_ICON, RST, bg, fg};
     use crate::segments::testutil::init_repo;
     use std::fs;
     use tempfile::TempDir;
@@ -313,25 +315,44 @@ mod tests {
         let repo = init_repo(tmp.path());
 
         // Commit a file and a .gitattributes that assigns a filter to it
-        fs::write(tmp.path().join(".gitattributes"), "secret.md filter=crypt diff=crypt\n").unwrap();
+        fs::write(
+            tmp.path().join(".gitattributes"),
+            "secret.md filter=crypt diff=crypt\n",
+        )
+        .unwrap();
         fs::write(tmp.path().join("secret.md"), "plaintext").unwrap();
         let mut index = repo.index().unwrap();
-        index.add_path(std::path::Path::new(".gitattributes")).unwrap();
+        index
+            .add_path(std::path::Path::new(".gitattributes"))
+            .unwrap();
         index.add_path(std::path::Path::new("secret.md")).unwrap();
         index.write().unwrap();
         let tree_id = index.write_tree().unwrap();
         let tree = repo.find_tree(tree_id).unwrap();
         let head = repo.head().unwrap().peel_to_commit().unwrap();
         let sig = repo.signature().unwrap();
-        repo.commit(Some("HEAD"), &sig, &sig, "add filtered file", &tree, &[&head])
-            .unwrap();
+        repo.commit(
+            Some("HEAD"),
+            &sig,
+            &sig,
+            "add filtered file",
+            &tree,
+            &[&head],
+        )
+        .unwrap();
 
         // Modify the filtered file on disk (simulates smudge/clean mismatch)
         fs::write(tmp.path().join("secret.md"), "decrypted plaintext").unwrap();
 
         let out = render(tmp.path());
-        assert!(!out.contains('✎'), "filtered file should not show as modified: {out}");
-        assert!(out.contains(&bg(148)), "repo should appear clean (green): {out}");
+        assert!(
+            !out.contains('✎'),
+            "filtered file should not show as modified: {out}"
+        );
+        assert!(
+            out.contains(&bg(148)),
+            "repo should appear clean (green): {out}"
+        );
     }
 
     #[test]
@@ -424,7 +445,13 @@ mod tests {
         repo.set_head_detached(head_oid).unwrap();
 
         let out = render(tmp.path());
-        assert!(out.contains(&short_sha), "expected short SHA {short_sha} in: {out}");
-        assert!(out.contains(BRANCH_ICON), "expected branch icon in detached state: {out}");
+        assert!(
+            out.contains(&short_sha),
+            "expected short SHA {short_sha} in: {out}"
+        );
+        assert!(
+            out.contains(BRANCH_ICON),
+            "expected branch icon in detached state: {out}"
+        );
     }
 }

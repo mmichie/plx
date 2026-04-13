@@ -8,9 +8,7 @@ const SSH_ICON: &str = "\u{F817}";
 
 fn get_hostname() -> String {
     let mut buf = [0u8; 256];
-    let ret = unsafe {
-        libc::gethostname(buf.as_mut_ptr().cast::<libc::c_char>(), buf.len())
-    };
+    let ret = unsafe { libc::gethostname(buf.as_mut_ptr().cast::<libc::c_char>(), buf.len()) };
     if ret != 0 {
         return String::new();
     }
@@ -35,7 +33,12 @@ pub fn render_with(from_bg: Option<u8>) -> (String, Option<u8>) {
     let mut out = String::with_capacity(128);
 
     if is_ssh {
-        let _ = write!(out, "{} {}{SSH_ICON} {hostname} ", arrow(from_bg, MY_BG), fg(MY_FG));
+        let _ = write!(
+            out,
+            "{} {}{SSH_ICON} {hostname} ",
+            arrow(from_bg, MY_BG),
+            fg(MY_FG)
+        );
     } else {
         let _ = write!(out, "{} {}{hostname} ", arrow(from_bg, MY_BG), fg(MY_FG));
     }
@@ -46,7 +49,7 @@ pub fn render_with(from_bg: Option<u8>) -> (String, Option<u8>) {
 #[cfg(test)]
 mod tests {
     use super::{get_hostname, render_with};
-    use crate::color::{bg, fg, ARROW};
+    use crate::color::{ARROW, bg, fg};
     use serial_test::serial;
 
     #[test]
@@ -92,7 +95,10 @@ mod tests {
         // SAFETY: test-only
         unsafe { std::env::remove_var("SSH_CONNECTION") };
         let (out, end_bg) = render_with(None);
-        assert!(!out.contains(ARROW), "should not have arrow when first segment");
+        assert!(
+            !out.contains(ARROW),
+            "should not have arrow when first segment"
+        );
         assert!(out.contains(&bg(238)), "expected bg(238) in: {out}");
         assert_eq!(end_bg, Some(238));
     }

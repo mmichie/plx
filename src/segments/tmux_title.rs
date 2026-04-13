@@ -125,7 +125,10 @@ mod tests {
             "expected blue branch in: {out}"
         );
         assert!(out.contains(BRANCH_ICON));
-        assert!(!out.contains(PENCIL_ICON), "clean repo should not have pencil");
+        assert!(
+            !out.contains(PENCIL_ICON),
+            "clean repo should not have pencil"
+        );
     }
 
     #[test]
@@ -169,10 +172,16 @@ mod tests {
             dirty: false,
         };
         let out = render_from_info("/home/user", "/home/user/src", Some(&info));
-        assert!(out.contains("#[fg=colour117]"), "expected blue branch in: {out}");
+        assert!(
+            out.contains("#[fg=colour117]"),
+            "expected blue branch in: {out}"
+        );
         assert!(out.contains("myrepo"), "expected repo name in: {out}");
         assert!(out.contains("main"), "expected branch in: {out}");
-        assert!(!out.contains(PENCIL_ICON), "clean repo should not have pencil icon");
+        assert!(
+            !out.contains(PENCIL_ICON),
+            "clean repo should not have pencil icon"
+        );
     }
 
     #[test]
@@ -183,8 +192,14 @@ mod tests {
             dirty: true,
         };
         let out = render_from_info("/home/user", "/home/user/src", Some(&info));
-        assert!(out.contains("#[fg=colour174]"), "expected pink branch in: {out}");
-        assert!(out.contains(PENCIL_ICON), "dirty repo should have pencil icon");
+        assert!(
+            out.contains("#[fg=colour174]"),
+            "expected pink branch in: {out}"
+        );
+        assert!(
+            out.contains(PENCIL_ICON),
+            "dirty repo should have pencil icon"
+        );
         assert!(out.contains("feature"), "expected branch name in: {out}");
         assert!(out.contains(BRANCH_ICON), "expected branch icon in: {out}");
     }

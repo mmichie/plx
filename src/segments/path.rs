@@ -1,6 +1,6 @@
 use std::fmt::Write;
 
-use crate::color::{arrow, fg, THIN};
+use crate::color::{THIN, arrow, fg};
 
 fn truncate_dir(name: &str, max: usize) -> String {
     if max < 2 || name.chars().count() <= max {
@@ -11,7 +11,12 @@ fn truncate_dir(name: &str, max: usize) -> String {
 }
 
 #[must_use]
-pub fn render_with(home: &str, pwd: &str, max_dir_size: Option<usize>, from_bg: Option<u8>) -> (String, Option<u8>) {
+pub fn render_with(
+    home: &str,
+    pwd: &str,
+    max_dir_size: Option<usize>,
+    from_bg: Option<u8>,
+) -> (String, Option<u8>) {
     let path = if !home.is_empty() && pwd.starts_with(home) {
         format!("~{}", &pwd[home.len()..])
     } else {
@@ -112,7 +117,10 @@ mod tests {
     #[test]
     fn five_components_no_truncation() {
         let out = render("", "/a/b/c/d/e", None);
-        assert!(!out.contains('\u{2026}'), "should not truncate 5 components");
+        assert!(
+            !out.contains('\u{2026}'),
+            "should not truncate 5 components"
+        );
         assert!(out.contains('a'));
         assert!(out.contains('e'));
     }
@@ -140,7 +148,10 @@ mod tests {
 
     #[test]
     fn truncate_dir_long_name() {
-        assert_eq!(truncate_dir("very-long-directory-name", 10), "very-long\u{2026}");
+        assert_eq!(
+            truncate_dir("very-long-directory-name", 10),
+            "very-long\u{2026}"
+        );
     }
 
     #[test]

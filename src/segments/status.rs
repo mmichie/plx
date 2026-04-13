@@ -1,4 +1,4 @@
-use crate::color::{arrow, bg, fg, ARROW};
+use crate::color::{ARROW, arrow, bg, fg};
 
 #[must_use]
 pub fn render_with(exit_status: i32, from_bg: Option<u8>) -> (String, Option<u8>) {
@@ -21,7 +21,7 @@ pub fn render_with(exit_status: i32, from_bg: Option<u8>) -> (String, Option<u8>
 #[cfg(test)]
 mod tests {
     use super::render_with;
-    use crate::color::{bg, fg, ARROW};
+    use crate::color::{ARROW, bg, fg};
 
     #[test]
     fn zero_exit_is_empty() {

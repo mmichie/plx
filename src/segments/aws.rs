@@ -10,12 +10,7 @@ pub fn render_with(from_bg: Option<u8>) -> (String, Option<u8>) {
     }
 
     let mut out = String::with_capacity(128);
-    let _ = write!(
-        out,
-        "{} {} {profile} ",
-        arrow(from_bg, 208),
-        fg(0),
-    );
+    let _ = write!(out, "{} {} {profile} ", arrow(from_bg, 208), fg(0),);
     (out, Some(208))
 }
 
@@ -44,7 +39,10 @@ mod tests {
         // SAFETY: test-only
         unsafe { std::env::set_var("AWS_PROFILE", "prod-admin") };
         let out = render();
-        assert!(out.contains("prod-admin"), "expected profile name in: {out}");
+        assert!(
+            out.contains("prod-admin"),
+            "expected profile name in: {out}"
+        );
         unsafe { std::env::remove_var("AWS_PROFILE") };
     }
 

@@ -53,7 +53,7 @@ pub fn zsh_wrap_escapes(s: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{arrow, bg, fg, zsh_wrap_escapes, ARROW};
+    use super::{ARROW, arrow, bg, fg, zsh_wrap_escapes};
 
     #[test]
     fn fg_produces_ansi_color() {

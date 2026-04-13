@@ -17,7 +17,8 @@ fn init_repo(dir: &std::path::Path) {
     let sig = repo.signature().unwrap();
     let tree_id = repo.index().unwrap().write_tree().unwrap();
     let tree = repo.find_tree(tree_id).unwrap();
-    repo.commit(Some("HEAD"), &sig, &sig, "init", &tree, &[]).unwrap();
+    repo.commit(Some("HEAD"), &sig, &sig, "init", &tree, &[])
+        .unwrap();
 }
 
 // ── dispatch ────────────────────────────────────────────────────────────────
@@ -77,11 +78,7 @@ fn path_with_max_dir_size_arg() {
 #[test]
 fn git_not_in_repo_succeeds() {
     let tmp = TempDir::new().unwrap();
-    cmd()
-        .arg("git")
-        .current_dir(tmp.path())
-        .assert()
-        .success();
+    cmd().arg("git").current_dir(tmp.path()).assert().success();
 }
 
 #[test]
@@ -227,7 +224,10 @@ fn prompt_in_tmux_produces_two_lines() {
         .stdout
         .clone();
     let text = String::from_utf8_lossy(&output);
-    assert!(text.contains('\n'), "tmux mode should produce two lines: {text:?}");
+    assert!(
+        text.contains('\n'),
+        "tmux mode should produce two lines: {text:?}"
+    );
 }
 
 // ── tmux-title ───────────────────────────────────────────────────────────────

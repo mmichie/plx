@@ -357,11 +357,7 @@ fn get_ncores() -> u32 {
 fn get_load_avg(index: usize) -> f64 {
     std::fs::read_to_string("/proc/loadavg")
         .ok()
-        .and_then(|s| {
-            s.split_whitespace()
-                .nth(index)
-                .and_then(|v| v.parse().ok())
-        })
+        .and_then(|s| s.split_whitespace().nth(index).and_then(|v| v.parse().ok()))
         .unwrap_or(0.0)
 }
 

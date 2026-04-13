@@ -42,7 +42,10 @@ mod tests {
         assert!(out.contains("add-zsh-hook preexec _plx_preexec"));
         assert!(out.contains("EPOCHREALTIME"));
         assert!(out.contains("plx prompt"));
-        assert!(out.contains("@priority_title"), "should check priority title");
+        assert!(
+            out.contains("@priority_title"),
+            "should check priority title"
+        );
         assert!(out.contains("rename-window"), "should rename tmux window");
     }
 }
