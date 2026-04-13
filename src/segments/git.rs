@@ -1,6 +1,6 @@
 use std::fmt::Write;
 
-use git2::{Repository, StatusOptions, StatusShow};
+use git2::{AttrCheckFlags, Repository, StatusOptions, StatusShow};
 
 use crate::color::{arrow, bg, fg, ARROW, BRANCH_ICON, RST};
 
@@ -61,14 +61,18 @@ pub fn render_with(
             {
                 staged += 1;
                 if s.is_wt_modified() || s.is_wt_deleted() || s.is_wt_typechange() {
-                    modified += 1;
+                    if !has_filter_attr(repo, entry.path()) {
+                        modified += 1;
+                    }
                 }
                 if s.is_wt_new() {
                     untracked += 1;
                 }
             } else {
                 if s.is_wt_modified() || s.is_wt_deleted() || s.is_wt_typechange() {
-                    modified += 1;
+                    if !has_filter_attr(repo, entry.path()) {
+                        modified += 1;
+                    }
                 }
                 if s.is_wt_new() {
                     untracked += 1;
@@ -195,6 +199,15 @@ pub fn render(discover_from: &std::path::Path) -> String {
     format!("{out}{RST}")
 }
 
+/// Returns true if the file has a `filter` gitattribute set (e.g. `filter=crypt`).
+/// libgit2 does not run smudge/clean filters when comparing working tree content
+/// to the index, so filtered files can appear falsely modified.
+fn has_filter_attr(repo: &Repository, path: Option<&str>) -> bool {
+    let Some(path) = path else { return false };
+    repo.get_attr(std::path::Path::new(path), "filter", AttrCheckFlags::default())
+        .is_ok_and(|v| v.is_some())
+}
+
 fn ahead_behind(repo: &Repository) -> (u32, u32) {
     let Ok(head) = repo.head() else {
         return (0, 0);
@@ -280,6 +293,33 @@ mod tests {
         let out = render(tmp.path());
         assert!(out.contains(&bg(161)), "expected pink bg(161) in: {out}");
         assert!(out.contains('✎'), "expected pencil icon in: {out}");
+    }
+
+    #[test]
+    fn filtered_file_not_counted_as_modified() {
+        let tmp = TempDir::new().unwrap();
+        let repo = init_repo(tmp.path());
+
+        // Commit a file and a .gitattributes that assigns a filter to it
+        fs::write(tmp.path().join(".gitattributes"), "secret.md filter=crypt diff=crypt\n").unwrap();
+        fs::write(tmp.path().join("secret.md"), "plaintext").unwrap();
+        let mut index = repo.index().unwrap();
+        index.add_path(std::path::Path::new(".gitattributes")).unwrap();
+        index.add_path(std::path::Path::new("secret.md")).unwrap();
+        index.write().unwrap();
+        let tree_id = index.write_tree().unwrap();
+        let tree = repo.find_tree(tree_id).unwrap();
+        let head = repo.head().unwrap().peel_to_commit().unwrap();
+        let sig = repo.signature().unwrap();
+        repo.commit(Some("HEAD"), &sig, &sig, "add filtered file", &tree, &[&head])
+            .unwrap();
+
+        // Modify the filtered file on disk (simulates smudge/clean mismatch)
+        fs::write(tmp.path().join("secret.md"), "decrypted plaintext").unwrap();
+
+        let out = render(tmp.path());
+        assert!(!out.contains('✎'), "filtered file should not show as modified: {out}");
+        assert!(out.contains(&bg(148)), "repo should appear clean (green): {out}");
     }
 
     #[test]
