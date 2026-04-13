@@ -1,7 +1,7 @@
 use git2::Repository;
 
 use crate::segments::{
-    character, cmd_duration, git, hostname, jobs, nix_shell, path, reset, status, tmux_title,
+    aws, character, cmd_duration, git, hostname, jobs, nix_shell, path, reset, status, tmux_title,
     username, venv,
 };
 
@@ -57,6 +57,10 @@ pub fn render(ctx: &mut PromptContext) -> String {
     from_bg = next_bg;
 
     let (seg, next_bg) = nix_shell::render_with(from_bg);
+    out.push_str(&seg);
+    from_bg = next_bg;
+
+    let (seg, next_bg) = aws::render_with(from_bg);
     out.push_str(&seg);
     from_bg = next_bg;
 

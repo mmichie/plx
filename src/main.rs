@@ -1,6 +1,7 @@
 #[cfg(feature = "banner")]
 mod banner;
 mod color;
+mod repo_status;
 mod segments;
 mod shell;
 
@@ -21,6 +22,7 @@ fn main() {
         }
         Some("git") => print!("{}", segments::git::render(Path::new("."))),
         Some("nix-shell") => print!("{}", segments::nix_shell::render()),
+        Some("aws") => print!("{}", segments::aws::render()),
         Some("prompt") => {
             let max_dir_size = args.get(2).and_then(|s| s.parse().ok());
             let exit_status = args.get(3).and_then(|s| s.parse().ok()).unwrap_or(0);
@@ -55,6 +57,7 @@ fn main() {
                 std::process::exit(1);
             }
         }
+        Some("status") => repo_status::run(),
         #[cfg(feature = "banner")]
         Some("banner") => {
             let scale = args.get(2).and_then(|s| s.parse().ok()).unwrap_or(2u32);
@@ -64,7 +67,7 @@ fn main() {
             banner::generate(scale, palette, banner_type, title);
         }
         _ => {
-            eprintln!("Usage: plx <path|git|nix-shell|prompt|tmux-title|init|banner>");
+            eprintln!("Usage: plx <path|git|nix-shell|prompt|tmux-title|init|status|banner>");
             std::process::exit(1);
         }
     }

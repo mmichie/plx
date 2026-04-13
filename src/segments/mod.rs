@@ -1,3 +1,4 @@
+pub mod aws;
 pub mod character;
 pub mod cmd_duration;
 pub mod git;
