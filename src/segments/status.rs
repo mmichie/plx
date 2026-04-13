@@ -34,7 +34,7 @@ mod tests {
     fn nonzero_shows_badge() {
         let (out, end_bg) = render_with(1, Some(236));
         assert!(out.contains(&bg(196)), "expected red bg in: {out}");
-        assert!(out.contains("1"), "expected exit code in: {out}");
+        assert!(out.contains('1'), "expected exit code in: {out}");
         assert!(out.contains(ARROW));
         assert!(out.contains(&fg(196)));
         assert_eq!(end_bg, Some(236));

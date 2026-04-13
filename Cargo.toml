@@ -9,7 +9,7 @@ default = ["banner"]
 banner = ["dep:image"]
 
 [dependencies]
-git2 = { version = "0.20", default-features = false }
+git2 = { version = "0.20", default-features = false, features = ["vendored-libgit2"] }
 image = { version = "0.25", optional = true, default-features = false, features = ["png"] }
 libc = "0.2"
 

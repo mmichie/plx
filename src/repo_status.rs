@@ -327,7 +327,7 @@ mod tests {
     fn now_secs() -> i64 {
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_secs() as i64)
+            .map(|d| d.as_secs().cast_signed())
             .unwrap_or(0)
     }
 

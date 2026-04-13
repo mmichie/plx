@@ -15,7 +15,7 @@ mod tests {
     fn success_white() {
         let (out, _) = render_with(true, Some(236));
         assert!(out.contains(&fg(15)), "expected fg(15) in: {out}");
-        assert!(out.contains("$"));
+        assert!(out.contains('$'));
     }
 
     #[test]

@@ -22,7 +22,7 @@ mod tests {
     #[test]
     fn nonzero_jobs() {
         let (out, bg) = render_with(3, Some(236));
-        assert!(out.contains("3"), "expected count in: {out}");
+        assert!(out.contains('3'), "expected count in: {out}");
         assert_eq!(bg, Some(236));
     }
 }
