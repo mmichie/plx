@@ -1,9 +1,7 @@
 use git2::Repository;
 
-use crate::segments::{
-    aws, character, cmd_duration, git, hostname, jobs, nix_shell, path, reset, status, tmux_title,
-    username, venv,
-};
+use crate::config::Config;
+use crate::segments::{git, registry, reset, tmux_title};
 
 pub struct PromptContext {
     pub home: String,
@@ -14,6 +12,9 @@ pub struct PromptContext {
     pub duration_ms: u64,
     pub job_count: u32,
     pub in_tmux: bool,
+    /// Set by the git segment during rendering, read by tmux title.
+    pub git_info: Option<git::GitInfo>,
+    pub config: Config,
 }
 
 impl PromptContext {
@@ -39,59 +40,28 @@ impl PromptContext {
             duration_ms,
             job_count,
             in_tmux,
+            git_info: None,
+            config: Config::load(),
         }
     }
 }
 
 #[must_use]
 pub fn render(ctx: &mut PromptContext) -> String {
+    let segments = registry::build_segments(&ctx.config);
     let mut out = String::with_capacity(1024);
+    let mut from_bg: Option<u8> = None;
 
-    out.push_str(&venv::render_prefix());
-
-    let (seg, mut from_bg) = username::render_with(None);
-    out.push_str(&seg);
-
-    let (seg, next_bg) = hostname::render_with(from_bg);
-    out.push_str(&seg);
-    from_bg = next_bg;
-
-    let (seg, next_bg) = nix_shell::render_with(from_bg);
-    out.push_str(&seg);
-    from_bg = next_bg;
-
-    let (seg, next_bg) = aws::render_with(from_bg);
-    out.push_str(&seg);
-    from_bg = next_bg;
-
-    let (seg, next_bg) = path::render_with(&ctx.home, &ctx.pwd, ctx.max_dir_size, from_bg);
-    out.push_str(&seg);
-    from_bg = next_bg;
-
-    let (seg, next_bg, git_info) = git::render_with(ctx.repo.as_mut(), from_bg);
-    out.push_str(&seg);
-    from_bg = next_bg;
-
-    let (seg, next_bg) = status::render_with(ctx.exit_status, from_bg);
-    out.push_str(&seg);
-    from_bg = next_bg;
-
-    let (seg, next_bg) = cmd_duration::render_with(ctx.duration_ms, from_bg);
-    out.push_str(&seg);
-    from_bg = next_bg;
-
-    let (seg, next_bg) = jobs::render_with(ctx.job_count, from_bg);
-    out.push_str(&seg);
-    from_bg = next_bg;
-
-    let (seg, next_bg) = character::render_with(ctx.exit_status == 0, from_bg);
-    out.push_str(&seg);
-    from_bg = next_bg;
+    for seg in &segments {
+        let result = seg.render(ctx, from_bg);
+        out.push_str(&result.text);
+        from_bg = result.end_bg;
+    }
 
     out.push_str(&reset::render_final(from_bg));
 
     if ctx.in_tmux {
-        let title = tmux_title::render_from_info(&ctx.home, &ctx.pwd, git_info.as_ref());
+        let title = tmux_title::render_from_info(&ctx.home, &ctx.pwd, ctx.git_info.as_ref());
         out.push('\n');
         out.push_str(&title);
     }
@@ -103,6 +73,7 @@ pub fn render(ctx: &mut PromptContext) -> String {
 mod tests {
     use super::{PromptContext, render};
     use crate::color::{ARROW, BRANCH_ICON, RST};
+    use crate::config::Config;
     use crate::segments::testutil::init_repo;
     use serial_test::serial;
     use tempfile::TempDir;
@@ -125,6 +96,8 @@ mod tests {
             duration_ms: 0,
             job_count: 0,
             in_tmux: false,
+            git_info: None,
+            config: Config::default(),
         };
 
         let out = render(&mut ctx);
@@ -147,6 +120,8 @@ mod tests {
             duration_ms: 0,
             job_count: 0,
             in_tmux: false,
+            git_info: None,
+            config: Config::default(),
         };
 
         let out = render(&mut ctx);
@@ -172,6 +147,8 @@ mod tests {
             duration_ms: 0,
             job_count: 0,
             in_tmux: true,
+            git_info: None,
+            config: Config::default(),
         };
 
         let out = render(&mut ctx);
@@ -203,6 +180,8 @@ mod tests {
             duration_ms: 0,
             job_count: 0,
             in_tmux: false,
+            git_info: None,
+            config: Config::default(),
         };
 
         let out = render(&mut ctx);
@@ -224,6 +203,8 @@ mod tests {
             duration_ms: 0,
             job_count: 0,
             in_tmux: false,
+            git_info: None,
+            config: Config::default(),
         };
 
         let out = render(&mut ctx);

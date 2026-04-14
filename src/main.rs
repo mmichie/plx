@@ -1,6 +1,7 @@
 #[cfg(feature = "banner")]
 mod banner;
 mod color;
+mod config;
 mod repo_status;
 mod segments;
 mod shell;
@@ -35,11 +36,12 @@ fn main() {
                 job_count,
             );
             let raw = segments::prompt::render(&mut ctx);
-            // Only the prompt line gets zsh escape wrapping; tmux title is plain.
+            let shell = env::var("PLX_SHELL").unwrap_or_default();
+            // Only the prompt line gets escape wrapping; tmux title is plain.
             if let Some((prompt, title)) = raw.split_once('\n') {
-                print!("{}\n{}", color::zsh_wrap_escapes(prompt), title);
+                print!("{}\n{}", color::wrap_for_shell(&shell, prompt), title);
             } else {
-                print!("{}", color::zsh_wrap_escapes(&raw));
+                print!("{}", color::wrap_for_shell(&shell, &raw));
             }
         }
         Some("tmux-title") => {
@@ -49,14 +51,15 @@ fn main() {
                 .unwrap_or_default();
             println!("{}", segments::tmux_title::render(&home, &pwd));
         }
-        Some("init") => {
-            if let Some("zsh") = args.get(2).map(String::as_str) {
-                print!("{}", shell::init_zsh());
-            } else {
-                eprintln!("Usage: plx init <zsh>");
+        Some("init") => match args.get(2).map(String::as_str) {
+            Some("zsh") => print!("{}", shell::init_zsh()),
+            Some("bash") => print!("{}", shell::init_bash()),
+            Some("fish") => print!("{}", shell::init_fish()),
+            _ => {
+                eprintln!("Usage: plx init <zsh|bash|fish>");
                 std::process::exit(1);
             }
-        }
+        },
         Some("status") => repo_status::run(),
         #[cfg(feature = "banner")]
         Some("banner") => {

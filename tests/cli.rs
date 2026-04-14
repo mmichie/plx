@@ -288,8 +288,28 @@ fn init_without_shell_arg_exits_failure() {
 }
 
 #[test]
+fn init_bash_outputs_prompt_command() {
+    cmd()
+        .args(["init", "bash"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("PROMPT_COMMAND"))
+        .stdout(predicate::str::contains("plx prompt"));
+}
+
+#[test]
+fn init_fish_outputs_fish_prompt() {
+    cmd()
+        .args(["init", "fish"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("fish_prompt"))
+        .stdout(predicate::str::contains("plx prompt"));
+}
+
+#[test]
 fn init_unsupported_shell_exits_failure() {
-    cmd().args(["init", "fish"]).assert().failure();
+    cmd().args(["init", "tcsh"]).assert().failure();
 }
 
 // ── status ───────────────────────────────────────────────────────────────────

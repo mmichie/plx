@@ -51,9 +51,45 @@ pub fn zsh_wrap_escapes(s: &str) -> String {
     out
 }
 
+/// Wrap ANSI escape sequences in `\x01...\x02` so bash readline can
+/// calculate visible prompt width when PS1 is set programmatically.
+#[must_use]
+pub fn bash_wrap_escapes(s: &str) -> String {
+    let mut out = String::with_capacity(s.len() + s.len() / 4);
+    let mut parts = s.split('\x1b');
+
+    if let Some(first) = parts.next() {
+        out.push_str(first);
+    }
+
+    for part in parts {
+        if let Some(m_pos) = part.find('m') {
+            out.push_str("\x01\x1b");
+            out.push_str(&part[..=m_pos]);
+            out.push('\x02');
+            out.push_str(&part[m_pos + 1..]);
+        } else {
+            out.push('\x1b');
+            out.push_str(part);
+        }
+    }
+
+    out
+}
+
+/// Wrap ANSI escapes for the given shell. Falls back to zsh wrapping.
+#[must_use]
+pub fn wrap_for_shell(shell: &str, s: &str) -> String {
+    match shell {
+        "bash" => bash_wrap_escapes(s),
+        "fish" => s.to_string(),
+        _ => zsh_wrap_escapes(s),
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{ARROW, arrow, bg, fg, zsh_wrap_escapes};
+    use super::{ARROW, arrow, bash_wrap_escapes, bg, fg, wrap_for_shell, zsh_wrap_escapes};
 
     #[test]
     fn fg_produces_ansi_color() {
@@ -109,5 +145,55 @@ mod tests {
         let out = arrow(None, 31);
         assert_eq!(out, bg(31));
         assert!(!out.contains(ARROW));
+    }
+
+    #[test]
+    fn bash_wrap_single_escape() {
+        let input = format!("{}text", fg(31));
+        let wrapped = bash_wrap_escapes(&input);
+        assert_eq!(wrapped, "\x01\x1b[38;5;31m\x02text");
+    }
+
+    #[test]
+    fn bash_wrap_multiple_escapes() {
+        let input = format!("{}hello{}world", fg(31), bg(236));
+        let wrapped = bash_wrap_escapes(&input);
+        assert_eq!(
+            wrapped,
+            "\x01\x1b[38;5;31m\x02hello\x01\x1b[48;5;236m\x02world"
+        );
+    }
+
+    #[test]
+    fn bash_wrap_no_escapes() {
+        assert_eq!(bash_wrap_escapes("hello"), "hello");
+    }
+
+    #[test]
+    fn wrap_for_shell_zsh_default() {
+        let input = format!("{}text", fg(31));
+        let wrapped = wrap_for_shell("zsh", &input);
+        assert_eq!(wrapped, zsh_wrap_escapes(&input));
+    }
+
+    #[test]
+    fn wrap_for_shell_bash() {
+        let input = format!("{}text", fg(31));
+        let wrapped = wrap_for_shell("bash", &input);
+        assert_eq!(wrapped, bash_wrap_escapes(&input));
+    }
+
+    #[test]
+    fn wrap_for_shell_fish_passthrough() {
+        let input = format!("{}text", fg(31));
+        let wrapped = wrap_for_shell("fish", &input);
+        assert_eq!(wrapped, input);
+    }
+
+    #[test]
+    fn wrap_for_shell_unknown_defaults_to_zsh() {
+        let input = format!("{}text", fg(31));
+        let wrapped = wrap_for_shell("unknown", &input);
+        assert_eq!(wrapped, zsh_wrap_escapes(&input));
     }
 }

@@ -1,17 +1,41 @@
 pub mod aws;
 pub mod character;
 pub mod cmd_duration;
+pub mod custom_command;
 pub mod git;
 pub mod hostname;
 pub mod jobs;
+pub mod k8s;
 pub mod nix_shell;
+pub mod node;
 pub mod path;
 pub mod prompt;
+pub mod python;
+pub mod registry;
 pub mod reset;
+pub mod rust_toolchain;
 pub mod status;
 pub mod tmux_title;
 pub mod username;
 pub mod venv;
+
+use std::path::PathBuf;
+
+/// Walk up from `start` looking for `filename`. Returns the path to the file
+/// if found within `max_depth` parent directories.
+pub(crate) fn find_ancestor_file(start: &str, filename: &str, max_depth: usize) -> Option<PathBuf> {
+    let mut dir = PathBuf::from(start);
+    for _ in 0..=max_depth {
+        let candidate = dir.join(filename);
+        if candidate.exists() {
+            return Some(candidate);
+        }
+        if !dir.pop() {
+            break;
+        }
+    }
+    None
+}
 
 #[cfg(test)]
 pub(crate) mod testutil {
