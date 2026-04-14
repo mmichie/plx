@@ -61,6 +61,9 @@ fn main() {
             }
         },
         Some("status") => repo_status::run(),
+        Some("version" | "--version" | "-V") => {
+            println!("plx {}", env!("CARGO_PKG_VERSION"));
+        }
         #[cfg(feature = "banner")]
         Some("banner") => {
             let scale = args.get(2).and_then(|s| s.parse().ok()).unwrap_or(2u32);
@@ -70,7 +73,9 @@ fn main() {
             banner::generate(scale, palette, banner_type, title);
         }
         _ => {
-            eprintln!("Usage: plx <path|git|nix-shell|prompt|tmux-title|init|status|banner>");
+            eprintln!(
+                "Usage: plx <path|git|nix-shell|prompt|tmux-title|init|status|version|banner>"
+            );
             std::process::exit(1);
         }
     }
