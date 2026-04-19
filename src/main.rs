@@ -5,6 +5,8 @@ mod config;
 mod repo_status;
 mod segments;
 mod shell;
+#[cfg(feature = "weather")]
+mod weather;
 
 use std::env;
 use std::path::Path;
@@ -72,10 +74,25 @@ fn main() {
             let title = args.get(5).map(String::as_str);
             banner::generate(scale, palette, banner_type, title);
         }
+        #[cfg(feature = "weather")]
+        Some("weather") => weather::run(&args[2..]),
         _ => {
-            eprintln!(
-                "Usage: plx <path|git|nix-shell|prompt|tmux-title|init|status|version|banner>"
-            );
+            let features: &[&str] = &[
+                "path",
+                "git",
+                "nix-shell",
+                "aws",
+                "prompt",
+                "tmux-title",
+                "init",
+                "status",
+                "version",
+                #[cfg(feature = "banner")]
+                "banner",
+                #[cfg(feature = "weather")]
+                "weather",
+            ];
+            eprintln!("Usage: plx <{}>", features.join("|"));
             std::process::exit(1);
         }
     }

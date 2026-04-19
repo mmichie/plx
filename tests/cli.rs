@@ -336,3 +336,62 @@ fn status_not_in_repo_exits_failure() {
         .assert()
         .failure();
 }
+
+// ── weather ──────────────────────────────────────────────────────────────────
+
+#[cfg(feature = "weather")]
+#[test]
+fn weather_help_lists_all_flags() {
+    cmd()
+        .args(["weather", "--help"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("--lat"))
+        .stdout(predicate::str::contains("--lon"))
+        .stdout(predicate::str::contains("--provider"))
+        .stdout(predicate::str::contains("--units"))
+        .stdout(predicate::str::contains("--cache-ttl"))
+        .stdout(predicate::str::contains("--no-show-city"))
+        .stdout(predicate::str::contains("--no-show-icon"))
+        .stdout(predicate::str::contains("--use-nerd-font"))
+        .stdout(predicate::str::contains("PLX_WEATHER_"));
+}
+
+#[cfg(feature = "weather")]
+#[test]
+fn weather_bad_flag_is_error_silent() {
+    // Any parse error MUST NOT crash. We still exit 0 and print nothing
+    // harmful to stdout.
+    let tmp = TempDir::new().unwrap();
+    cmd()
+        .args(["weather", "--bogus-flag"])
+        .env("XDG_CACHE_HOME", tmp.path())
+        .env("PLX_WEATHER_LOCATION_CMD", "false") // avoid IP geolocation
+        .assert()
+        .success();
+}
+
+#[cfg(feature = "weather")]
+#[test]
+fn weather_bad_lat_is_error_silent() {
+    let tmp = TempDir::new().unwrap();
+    cmd()
+        .args(["weather", "--lat", "not-a-number"])
+        .env("XDG_CACHE_HOME", tmp.path())
+        .env("PLX_WEATHER_LOCATION_CMD", "false") // avoid IP geolocation
+        .assert()
+        .success();
+}
+
+#[cfg(feature = "weather")]
+#[test]
+fn weather_location_cmd_failure_is_error_silent() {
+    // location cmd fails, IP geolocation would be next but we can't rely
+    // on network in CI. The binary must still exit 0 regardless.
+    let tmp = TempDir::new().unwrap();
+    cmd()
+        .args(["weather", "--location-cmd", "false"])
+        .env("XDG_CACHE_HOME", tmp.path())
+        .assert()
+        .success();
+}

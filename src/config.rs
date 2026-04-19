@@ -10,6 +10,11 @@ pub struct Config {
     /// Per-segment config blocks: `[segment.git]`, `[segment.path]`, etc.
     #[serde(default)]
     pub segment: HashMap<String, SegmentConfig>,
+    /// `[weather]` TOML section (optional). All fields individually optional.
+    /// Consumed only when the `weather` cargo feature is enabled.
+    #[serde(default)]
+    #[cfg_attr(not(feature = "weather"), allow(dead_code))]
+    pub weather: WeatherConfig,
 }
 
 #[derive(Debug, Deserialize, Default)]
@@ -34,6 +39,33 @@ pub struct SegmentConfig {
     pub cache_secs: Option<u64>,
     /// Command timeout in milliseconds (`custom_command` segment). Default: 500.
     pub timeout_ms: Option<u64>,
+}
+
+/// `[weather]` TOML section. All fields optional; CLI flags and env vars
+/// override anything set here. CLI > env > TOML > built-in defaults.
+#[derive(Debug, Deserialize, Default, Clone)]
+#[serde(default)]
+pub struct WeatherConfig {
+    /// `"openmeteo"` (default) or `"openweather"`.
+    pub provider: Option<String>,
+    /// API key (required for `openweather`).
+    pub api_key: Option<String>,
+    /// `"metric"` (default) or `"imperial"`.
+    pub units: Option<String>,
+    /// Cache TTL in minutes. Default: 15.
+    pub cache_ttl: Option<u64>,
+    /// Show `"City, CC"` prefix. Default: true.
+    pub show_city: Option<bool>,
+    /// Show weather icon. Default: true.
+    pub show_icon: Option<bool>,
+    /// Use Nerd Font glyphs instead of plain Unicode. Default: false.
+    pub use_nerd_font: Option<bool>,
+    /// Fixed latitude override.
+    pub lat: Option<f64>,
+    /// Fixed longitude override.
+    pub lon: Option<f64>,
+    /// Shell command that prints `"lat|lon"` on stdout.
+    pub location_cmd: Option<String>,
 }
 
 impl Config {
