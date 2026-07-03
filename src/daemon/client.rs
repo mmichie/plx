@@ -27,6 +27,30 @@ const QUERY_TIMEOUT: Duration = Duration::from_millis(10);
 /// — but still bounded so a hung daemon can't pin preexec indefinitely.
 const PUBLISH_TIMEOUT: Duration = Duration::from_millis(25);
 
+/// `CHEVRON_DAEMON_TIMEOUT_MS` overrides both socket budgets. The
+/// defaults above are prompt-latency-first and deliberately DROP daemon
+/// work rather than stall a keystroke; that lossiness is load-dependent,
+/// so a test runner asserting on delivery (the daemon e2e suite runs
+/// under a 48-thread process storm) — or a user who values reliable
+/// history capture over microseconds — can widen the budgets. Parsed
+/// once per process.
+fn timeout_override_ms() -> Option<u64> {
+    static OVERRIDE: std::sync::OnceLock<Option<u64>> = std::sync::OnceLock::new();
+    *OVERRIDE.get_or_init(|| {
+        std::env::var("CHEVRON_DAEMON_TIMEOUT_MS")
+            .ok()
+            .and_then(|v| v.parse().ok())
+    })
+}
+
+fn query_timeout() -> Duration {
+    timeout_override_ms().map_or(QUERY_TIMEOUT, Duration::from_millis)
+}
+
+fn publish_timeout() -> Duration {
+    timeout_override_ms().map_or(PUBLISH_TIMEOUT, Duration::from_millis)
+}
+
 /// Ask the running daemon for `cwd`'s status. Returns `None` for any
 /// failure so the caller can transparently degrade to inline compute.
 ///
@@ -37,8 +61,8 @@ const PUBLISH_TIMEOUT: Duration = Duration::from_millis(25);
 #[must_use]
 pub fn try_query(cwd: &Path) -> Option<RepoStatus> {
     let conn = UnixStream::connect(paths::socket_path()).ok()?;
-    conn.set_read_timeout(Some(QUERY_TIMEOUT)).ok()?;
-    conn.set_write_timeout(Some(QUERY_TIMEOUT)).ok()?;
+    conn.set_read_timeout(Some(query_timeout())).ok()?;
+    conn.set_write_timeout(Some(query_timeout())).ok()?;
 
     let mut reader = BufReader::new(&conn);
     let mut line = String::new();
@@ -84,8 +108,8 @@ fn write_line(mut conn: &UnixStream, line: &str) -> std::io::Result<()> {
 #[must_use]
 pub fn try_version() -> Option<proto::DaemonVersion> {
     let conn = UnixStream::connect(paths::socket_path()).ok()?;
-    conn.set_read_timeout(Some(QUERY_TIMEOUT)).ok()?;
-    conn.set_write_timeout(Some(QUERY_TIMEOUT)).ok()?;
+    conn.set_read_timeout(Some(query_timeout())).ok()?;
+    conn.set_write_timeout(Some(query_timeout())).ok()?;
 
     let mut reader = BufReader::new(&conn);
     let mut line = String::new();
@@ -175,8 +199,8 @@ pub fn try_publish_event(req: &proto::Request) -> bool {
     let Ok(conn) = UnixStream::connect(paths::socket_path()) else {
         return false;
     };
-    if conn.set_read_timeout(Some(PUBLISH_TIMEOUT)).is_err()
-        || conn.set_write_timeout(Some(PUBLISH_TIMEOUT)).is_err()
+    if conn.set_read_timeout(Some(publish_timeout())).is_err()
+        || conn.set_write_timeout(Some(publish_timeout())).is_err()
     {
         return false;
     }
