@@ -97,10 +97,14 @@ verification):
   tty reports readability only at line boundaries, so a cooked probe is
   blind to partial-line input (paste leftovers after `read -rs`) and
   the query races it. A CSI-less read buffer is typeahead truncated at
-  a typed `R` — re-inject it, never eat it. precmd's rewrite query must
-  linger (drain in its own raw window) on timeout: unlike preexec's
-  query there is no sweep behind it, and an unabsorbed straggler
-  kernel-echoes at the cursor as literal `^[[68;1R`.
+  a typed `R` — re-inject it, never eat it, and absorb the plain tail
+  still queued behind the `R` (inside the same raw window) so the burst
+  re-injects as ONE ordered line: split across the buffer stack and the
+  tty queue, a typed `echo BRAVO` came back as `AVO` — which EXECUTED
+  as its own command — plus a parked `echo BR`. precmd's rewrite query
+  must linger (drain in its own raw window) on timeout: unlike
+  preexec's query there is no sweep behind it, and an unabsorbed
+  straggler kernel-echoes at the cursor as literal `^[[68;1R`.
 - Every tty dance (raw flip through restore) sits in a `{ try } always
   { restore }` block: ^C during the exchange or sweep unwinds the hook
   chain mid-function, and without the always-list the stty restore is
@@ -115,6 +119,12 @@ verification):
   COLUMNS: the cursor ends in auto-margin pending-wrap, from which
   emulators disagree on how the next newline advances (ble.sh's "xenl"
   trap) — the saved row may be off by one (duplicated-chevron glitch).
+- Skip the rewrite when the command contains zero-width characters and
+  COMBINING_CHARS is unset: ZLE then paints them as visible `<xxxx>`
+  widgets (U+0301 costs six cells, not zero), so the painted span no
+  longer matches the `${(m)#}` cell math and the erase eats rows it
+  never painted. With the option set (the macOS default) the terminal
+  composes them and the rewrite proceeds.
 - Never `zle reset-prompt` from the async callback during a PS2
   continuation — it repaints PS2 re-expanded mid-handler, so `%_`
   picks up the callback's own parser stack and the user's `quote>`
@@ -139,7 +149,7 @@ verification):
   in a pseudo-terminal with a hermetic `$HOME` and plays the terminal's role
   — a vt100 screen model interprets all output, and a responder answers DSR
   queries per a configurable mode (`Dsr::Immediate/Delayed/Silent/Fragmented/
-  FocusNoise/DoubleResponse/AlternateDelayed`;
+  FocusNoise/DoubleResponse/AlternateDelayed/Static/MouseNoise`;
   `Render::Sync/SyncDelayed/Async/AsyncDelayed` controls `CHEVRON_ASYNC`
   and an optional render-latency wrapper). Assertions run
   against the rendered grid (rows containing `❯`, glyph counts, cell colors);
