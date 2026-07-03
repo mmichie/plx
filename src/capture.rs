@@ -402,7 +402,7 @@ fn publish_cmd_start(id: &str, session_id: &str, cwd: &Path, cmd: &str) {
         cmd: cmd.to_string(),
         started_at_ms: now_unix_ms(),
     });
-    let _ = client::try_publish_event(&req);
+    let _ = client::publish_event_or_spool(&req);
 }
 
 fn publish_cmd_end(
@@ -426,7 +426,7 @@ fn publish_cmd_end(
         output_bytes: Some(output_bytes),
         output_truncated: Some(truncated),
     });
-    let _ = client::try_publish_event(&req);
+    let _ = client::publish_event_or_spool(&req);
 }
 
 fn hostname_or_unknown() -> String {

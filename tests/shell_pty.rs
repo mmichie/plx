@@ -3169,7 +3169,9 @@ impl LiveFixture {
         let db = state::open_db(dir).unwrap();
         let (state_tx, _join) = state::spawn_no_watcher(state::TTL, db).unwrap();
         let serve_tx = state_tx.clone();
-        std::thread::spawn(move || listener::serve_loop(&listener_sock, &serve_tx));
+        std::thread::spawn(move || {
+            listener::serve_loop(&listener_sock, &serve_tx, &listener::ServeHooks::detached());
+        });
         state_tx
     }
 

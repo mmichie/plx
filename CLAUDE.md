@@ -46,7 +46,12 @@ Modules:
   is the most subtle code in the repo; see below before touching it.
 - `src/daemon/` — chevrond: TTL-cached `RepoStatus` served over a Unix
   socket, auto-spawned on cache miss, FS-watch invalidation (`daemon`
-  feature; `CHEVRON_NO_DAEMON=1` opts out).
+  feature; `CHEVRON_NO_DAEMON=1` opts out). Retires itself when idle
+  with no subscribers (`CHEVRON_DAEMON_IDLE_TIMEOUT_MS`, default 30 min)
+  and shuts down cleanly on SIGTERM/SIGINT. Lifecycle events that miss
+  the publish budget spool to `$socket_dir/spool/` and drain at daemon
+  startup and on watchdog ticks (`src/daemon/spool.rs`), so command
+  history has no holes across daemon outages or load spikes.
 - `src/health/`, `src/weather/`, `src/banner/`, `src/sysinfo.rs` — auxiliary
   subcommands behind cargo features (`banner`, `weather`).
 - `src/config.rs` — TOML config from `~/.config/chevron/config.toml`

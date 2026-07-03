@@ -232,6 +232,31 @@ pub fn try_publish_event(req: &proto::Request) -> bool {
     matches!(proto::decode_response(&line), Ok(proto::Response::Ack))
 }
 
+/// Publish with the spool as a durability net: try the wire first (the
+/// daemon is normally up and answers in well under the budget), and on
+/// any failure hand the event to the spool for the daemon to drain at
+/// startup or on its next watchdog tick. An event whose `CMD_START` is
+/// still spooled skips the wire entirely: a live `CMD_END` would no-op
+/// against the not-yet-replayed row and the pair would never complete.
+///
+/// Returns `true` if the event was delivered or durably queued. With
+/// `CHEVRON_NO_DAEMON` set the spool is skipped too — nothing would
+/// ever drain it.
+#[must_use]
+pub fn publish_event_or_spool(req: &proto::Request) -> bool {
+    if std::env::var_os("CHEVRON_NO_DAEMON").is_some() {
+        return false;
+    }
+    let follows_spooled_start = match req {
+        proto::Request::CmdEnd(e) => super::spool::has_spooled_start(&e.id),
+        _ => false,
+    };
+    if !follows_spooled_start && try_publish_event(req) {
+        return true;
+    }
+    super::spool::spool_event(req)
+}
+
 /// Attempt to spawn a detached daemon. Best-effort: any failure here just
 /// means the *next* prompt also goes through the inline path. Multiple
 /// concurrent callers are deduped via [`lifecycle::try_lock_exclusive`]
@@ -393,7 +418,9 @@ mod tests {
         let listener_sock = UnixListener::bind(&sock).unwrap();
         let db = state::open_db(dir.path()).unwrap();
         let (state_tx, _state_join) = state::spawn(state::TTL, db).unwrap();
-        std::thread::spawn(move || listener::serve_loop(&listener_sock, &state_tx));
+        std::thread::spawn(move || {
+            listener::serve_loop(&listener_sock, &state_tx, &listener::ServeHooks::detached());
+        });
         // Block until the daemon is ready to serve requests.
         for _ in 0..10 {
             if try_version_patient().is_some() {
