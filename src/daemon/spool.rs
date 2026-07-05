@@ -60,11 +60,18 @@ pub fn spool_event(req: &proto::Request) -> bool {
     if fs::create_dir_all(&dir).is_err() {
         return false;
     }
-    // Owner-only, like the socket dir: entries carry command lines.
-    if let Ok(meta) = fs::metadata(&dir) {
-        let mut perms = meta.permissions();
-        perms.set_mode(0o700);
-        let _ = fs::set_permissions(&dir, perms);
+    // Owner-only, like the socket dir: entries carry command lines. A
+    // chmod failure means the dir isn't ours (e.g. a squatter
+    // pre-created the /tmp fallback socket dir) — drop the event
+    // rather than write command lines into a directory we don't
+    // control.
+    let Ok(meta) = fs::metadata(&dir) else {
+        return false;
+    };
+    let mut perms = meta.permissions();
+    perms.set_mode(0o700);
+    if fs::set_permissions(&dir, perms).is_err() {
+        return false;
     }
     if entries(&dir).len() >= SPOOL_CAP {
         return false;

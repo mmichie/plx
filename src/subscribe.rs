@@ -84,7 +84,7 @@ enum Action {
 /// - 2: initial connect/handshake failure (no daemon at startup)
 #[must_use]
 pub fn run(args: &[String]) -> i32 {
-    let cwd_filter = match parse_args(args) {
+    let cwd_filter = match parse_args(args).and_then(canonicalize_filter) {
         Ok(c) => c,
         Err(msg) => {
             eprintln!("chevron subscribe: {msg}");
@@ -248,6 +248,22 @@ fn connect_and_relay(cwd_filter: Option<PathBuf>) -> Outcome {
     }
 }
 
+/// Canonicalize the `--cwd` filter. The daemon matches filters by exact
+/// path equality against the canonical paths it broadcasts (`git` events
+/// carry the repo's canonicalized workdir root), so a relative or
+/// symlinked argument — `/tmp` vs `/private/tmp` on macOS — would
+/// otherwise subscribe successfully and then match nothing, silently.
+/// A nonexistent path is an argument error, not an empty filter.
+fn canonicalize_filter(cwd: Option<PathBuf>) -> Result<Option<PathBuf>, String> {
+    match cwd {
+        None => Ok(None),
+        Some(p) => match p.canonicalize() {
+            Ok(canon) => Ok(Some(canon)),
+            Err(e) => Err(format!("--cwd {}: {e}", p.display())),
+        },
+    }
+}
+
 fn parse_args(args: &[String]) -> Result<Option<PathBuf>, String> {
     let mut cwd: Option<PathBuf> = None;
     let mut i = 0;
@@ -304,6 +320,27 @@ mod tests {
     fn args_unknown_flag_errors() {
         let args = vec!["--mystery".to_string()];
         assert!(parse_args(&args).is_err());
+    }
+
+    #[test]
+    fn canonicalize_filter_none_passes_through() {
+        assert_eq!(canonicalize_filter(None), Ok(None));
+    }
+
+    #[test]
+    fn canonicalize_filter_resolves_symlinks_and_relative_paths() {
+        // A tempdir path canonicalizes to itself modulo symlinks
+        // (/tmp → /private/tmp on macOS); the filter must be the
+        // canonical form or the daemon's exact-match test never fires.
+        let tmp = tempfile::TempDir::new().unwrap();
+        let got = canonicalize_filter(Some(tmp.path().to_path_buf())).unwrap();
+        assert_eq!(got, Some(tmp.path().canonicalize().unwrap()));
+    }
+
+    #[test]
+    fn canonicalize_filter_rejects_missing_path() {
+        let err = canonicalize_filter(Some(PathBuf::from("/definitely/not/here"))).unwrap_err();
+        assert!(err.contains("--cwd"), "error should name the flag: {err}");
     }
 
     #[test]
